@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # ML Service
+  ml-service:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - MODEL_STORAGE_TYPE=minio
+      - S3_BUCKET=ml-models
+      - S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - LLM_PROVIDER=ollama
+      - LLM_BASE_URL=http://ollama:11434
+      - LLM_MODEL=llama2
+      - VECTOR_DB_PATH=/app/data/vectordb
+    volumes:
+      - ./data/vectordb:/app/data/vectordb
+      - ./logs:/app/logs
+      - ./models:/app/models
+    depends_on:
+      - minio
+      - ollama
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # Ollama (Local LLM server)
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - ml-network
+    restart: unless-stopped
+    # Optionally enable GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # MinIO Client (for bucket creation)
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      mc mb myminio/ml-models --ignore-existing;
+      mc policy set public myminio/ml-models;
+      exit 0;
+      "
+    networks:
+      - ml-network
+
+networks:
+  ml-network:
+    driver: bridge
+
+volumes:
+  minio_data:
+    driver: local
+  ollama_models:
+    driver: local
