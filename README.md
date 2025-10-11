@@ -48,17 +48,20 @@ ml-service/
 ### Using Docker Compose (Recommended)
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd ml-service
    ```
 
 2. **Start services with Docker Compose**
+
    ```bash
    docker-compose up -d
    ```
 
    This will start:
+
    - ML Service (FastAPI) on `http://localhost:8000`
    - MinIO (S3-compatible storage) on `http://localhost:9000`
    - Ollama (Local LLM) on `http://localhost:11434`
@@ -70,6 +73,7 @@ ml-service/
 ### Local Development
 
 1. **Install Python dependencies**
+
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -77,6 +81,7 @@ ml-service/
    ```
 
 2. **Set environment variables**
+
    ```bash
    export DEBUG=true
    export LOG_LEVEL=INFO
@@ -275,15 +280,15 @@ spec:
         app: ml-service
     spec:
       containers:
-      - name: ml-service
-        image: ml-service:latest
-        ports:
-        - containerPort: 8000
-        env:
-        - name: MODEL_STORAGE_TYPE
-          value: "s3"
-        - name: S3_BUCKET
-          value: "ml-models"
+        - name: ml-service
+          image: ml-service:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MODEL_STORAGE_TYPE
+              value: "s3"
+            - name: S3_BUCKET
+              value: "ml-models"
 ```
 
 ## Monitoring
@@ -323,11 +328,13 @@ The service provides basic health and status information. For production monitor
 ### Common Issues
 
 1. **Model Loading Errors**
+
    - Check S3/MinIO connectivity
    - Verify bucket permissions
    - Ensure model files exist
 
 2. **RAG Performance**
+
    - Increase vector database resources
    - Optimize embedding model size
    - Adjust context limits
@@ -340,6 +347,7 @@ The service provides basic health and status information. For production monitor
 ### Logs
 
 Logs are available in:
+
 - Console output (development)
 - `./logs/ml-service.log` (file logging)
 - Container logs: `docker logs <container_id>`
@@ -359,6 +367,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Support
 
 For questions and support:
+
 - Create an issue in the repository
 - Check the documentation
 - Review the API docs at `/docs`

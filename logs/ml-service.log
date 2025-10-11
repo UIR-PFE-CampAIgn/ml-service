@@ -1,0 +1,17 @@
+2025-10-11 16:56:03 - app - INFO - setup_logging:122 - Logging configured with level: INFO
+2025-10-11 16:56:03 - app.ml - INFO - load_init_csv:48 - Loaded intent dataset: 26872 rows from data/intent/Bitext-customer-support-llm-chatbot-training-dataset/Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv
+2025-10-11 16:56:03 - app.ml - INFO - split_80_20:76 - Performed 80/20 split: train=21497, val=5375, stratified=yes
+2025-10-11 16:56:03 - app.ml - INFO - grid_search_c_ngram:111 - Starting grid search over C=[0.1, 1.0, 10.0] and ngram_range=[(1, 1), (1, 2)]
+2025-10-11 16:58:57 - app.ml - INFO - grid_search_c_ngram:125 - Best params: {'clf__C': 10.0, 'tfidf__ngram_range': (1, 1)}; best score: 0.9793
+2025-10-11 16:58:59 - app.ml - INFO - dump_metrics_json:166 - Wrote metrics JSON to models/intent/metrics.json
+2025-10-11 16:58:59 - app.ml - INFO - evaluate:196 - Evaluation completed. Metrics saved to models/intent/metrics.json
+2025-10-11 16:58:59 - app.core.model_registry - ERROR - save_model:113 - Failed to save model intent: Unable to locate credentials
+2025-10-11 17:03:16 - app - INFO - setup_logging:122 - Logging configured with level: INFO
+2025-10-11 17:03:16 - app.ml - INFO - load_init_csv:48 - Loaded intent dataset: 26872 rows from data/intent/Bitext-customer-support-llm-chatbot-training-dataset/Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv
+2025-10-11 17:03:16 - app.ml - INFO - split_80_20:76 - Performed 80/20 split: train=21497, val=5375, stratified=yes
+2025-10-11 17:03:16 - app.ml - INFO - grid_search_c_ngram:111 - Starting grid search over C=[0.1, 1.0, 10.0] and ngram_range=[(1, 1), (1, 2)]
+2025-10-11 17:06:28 - app.ml - INFO - grid_search_c_ngram:125 - Best params: {'clf__C': 10.0, 'tfidf__ngram_range': (1, 1)}; best score: 0.9793
+2025-10-11 17:06:30 - app.ml - INFO - dump_metrics_json:166 - Wrote metrics JSON to models/intent/metrics.json
+2025-10-11 17:06:30 - app.ml - INFO - evaluate:196 - Evaluation completed. Metrics saved to models/intent/metrics.json
+2025-10-11 17:06:30 - app.core.model_registry - INFO - save_model:109 - Model saved successfully: models/intent/20251011_170630/model.joblib
+2025-10-11 17:06:30 - app.ml - INFO - train_and_save_intent:308 - Training complete: model saved to models/intent/20251011_170630/model.joblib; metrics at models/intent/metrics.json

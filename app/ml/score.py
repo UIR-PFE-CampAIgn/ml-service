@@ -17,7 +17,9 @@ from app.core.logging import ml_logger
 
 class ScorePredictor:
     """Score prediction using LogisticRegression or XGBoost pipeline."""
-    
+    ## xgboost -> multi class (many segmentation)
+    ## decision_tree_classifier -> multi classification
+    ## logistic_regression -> performant when it comes to 2 classes
     def __init__(self, model_type: str = "logistic_regression", model_path: Optional[str] = None):
         self.model_type = model_type  # "logistic_regression" or "xgboost"
         self.model_path = model_path or settings.score_model_path
@@ -61,6 +63,8 @@ class ScorePredictor:
     def _create_logistic_regression_pipeline(self, hyperparameters: Dict[str, Any]) -> Pipeline:
         """Create Logistic Regression pipeline."""
         
+        # To adjust
+        # TPOT -> help us choose the appropriate model for our Data
         lr_params = {
             'C': hyperparameters.get('C', 1.0),
             'penalty': hyperparameters.get('penalty', 'l2'),
