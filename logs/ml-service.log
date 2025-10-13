@@ -15,3 +15,35 @@
 2025-10-11 17:06:30 - app.ml - INFO - evaluate:196 - Evaluation completed. Metrics saved to models/intent/metrics.json
 2025-10-11 17:06:30 - app.core.model_registry - INFO - save_model:109 - Model saved successfully: models/intent/20251011_170630/model.joblib
 2025-10-11 17:06:30 - app.ml - INFO - train_and_save_intent:308 - Training complete: model saved to models/intent/20251011_170630/model.joblib; metrics at models/intent/metrics.json
+2025-10-13 22:52:01 - app - INFO - setup_logging:122 - Logging configured with level: INFO
+2025-10-13 22:52:01 - app - INFO - lifespan:20 - ML Service starting up...
+2025-10-13 22:52:01 - app - INFO - lifespan:27 - Model registry connected. Available models: ['intent']
+2025-10-13 22:52:01 - app - INFO - lifespan:31 - ML Service startup complete
+2025-10-13 22:52:16 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:52:16 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:52:17 - uvicorn.access - INFO - send:496 - 127.0.0.1:56205 - "GET /api/v1/predict_intent?text=How+can+I+reset+my+password%3f HTTP/1.1" 200
+2025-10-13 22:52:37 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:52:37 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:52:37 - uvicorn.access - INFO - send:496 - 127.0.0.1:56299 - "GET /api/v1/predict_intent?text=When+it+can+be+shipped%3f HTTP/1.1" 200
+2025-10-13 22:52:47 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:52:47 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:52:47 - uvicorn.access - INFO - send:496 - 127.0.0.1:56345 - "GET /api/v1/predict_intent?text=How+much+is+it%3f HTTP/1.1" 200
+2025-10-13 22:53:00 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:53:00 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:53:00 - uvicorn.access - INFO - send:496 - 127.0.0.1:56403 - "GET /api/v1/predict_intent?text=What%27s+the+bussiness+is+about%3f HTTP/1.1" 200
+2025-10-13 22:53:14 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:53:14 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:53:14 - uvicorn.access - INFO - send:496 - 127.0.0.1:56469 - "GET /api/v1/predict_intent?text=How+to+login%3f HTTP/1.1" 200
+2025-10-13 22:53:31 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:53:31 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:53:31 - uvicorn.access - INFO - send:496 - 127.0.0.1:56548 - "GET /api/v1/predict_intent?text=I+wanna+cancel+my+order HTTP/1.1" 200
+2025-10-13 22:53:38 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:53:38 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:53:38 - uvicorn.access - INFO - send:496 - 127.0.0.1:56584 - "GET /api/v1/predict_intent?text=I+wanna+make+an+order HTTP/1.1" 200
+2025-10-13 22:54:02 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:54:02 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:54:02 - uvicorn.access - INFO - send:496 - 127.0.0.1:56687 - "GET /api/v1/predict_intent?text=I+wanna+find+my+recents+orders HTTP/1.1" 200
+2025-10-13 22:54:24 - app.core.model_registry - INFO - load_model:160 - Model loaded successfully: models/intent/20251011_170630/model.joblib
+2025-10-13 22:54:24 - app.ml - INFO - _load_model:34 - Intent model loaded successfully
+2025-10-13 22:54:24 - uvicorn.access - INFO - send:496 - 127.0.0.1:56792 - "GET /api/v1/predict_intent?text=I+wanna+signin+to+my+account HTTP/1.1" 200
+2025-10-13 22:56:38 - app - INFO - lifespan:36 - ML Service shutting down...

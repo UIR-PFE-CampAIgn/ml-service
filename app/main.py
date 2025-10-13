@@ -7,7 +7,7 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.core.logging import setup_logging, app_logger
-from app.api.v1 import intent, score, rag, train
+from app.api.v1 import intent, score, train
 from app.schemas import HealthResponse
 
 
@@ -75,12 +75,12 @@ app.include_router(
     responses={404: {"description": "Not found"}}
 )
 
-app.include_router(
-    rag.router,
-    prefix="/api/v1",
-    tags=["rag"],
-    responses={404: {"description": "Not found"}}
-)
+# app.include_router(
+#     rag.router,
+#     prefix="/api/v1",
+#     tags=["rag"],
+#     responses={404: {"description": "Not found"}}
+# )
 
 app.include_router(
     train.router,
