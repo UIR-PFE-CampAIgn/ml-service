@@ -7,7 +7,7 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.core.logging import setup_logging, app_logger
-from app.api.v1 import intent, score, rag, train
+from app.api.v1 import intent, score, train
 from app.schemas import HealthResponse
 
 
@@ -75,12 +75,12 @@ app.include_router(
     responses={404: {"description": "Not found"}}
 )
 
-app.include_router(
-    rag.router,
-    prefix="/api/v1",
-    tags=["rag"],
-    responses={404: {"description": "Not found"}}
-)
+#app.include_router(
+#    rag.router,
+#    prefix="/api/v1",
+#    tags=["rag"],
+#    responses={404: {"description": "Not found"}}
+#)
 
 app.include_router(
     train.router,
@@ -117,12 +117,12 @@ async def health_check():
         
         # Check vector database (for RAG)
         vector_db_status = "healthy"
-        try:
-            from app.ml.rag import RAGChain
-            rag_chain = RAGChain()
-            rag_chain.get_vectorstore_stats()
-        except Exception:
-            vector_db_status = "unhealthy"
+        #try:
+            #from app.ml.rag import RAGChain
+            #rag_chain = RAGChain()
+            #rag_chain.get_vectorstore_stats()
+        #except Exception:
+        #    vector_db_status = "unhealthy"
         
         services = {
             "model_registry": model_registry_status,
