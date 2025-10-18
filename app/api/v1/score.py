@@ -7,8 +7,12 @@ Update your existing app/api/v1/score.py with these endpoints
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional
-from app.ml.score import score_predictor
+from app.ml.train_score import train_and_save_lead_score
+from app.ml.score import ScorePredictor
 from app.core.logging import ml_logger
+
+# Initialize score predictor
+score_predictor = ScorePredictor()
 
 
 router = APIRouter(prefix="/ml/v1", tags=["Lead Scoring"])
@@ -88,9 +92,25 @@ async def predict_score(request: ScoreRequest):
         features = request.dict()
         result = await score_predictor.predict(features)
         
-        ml_logger.info(f"Score: {result['category']} ({result['score']:.3f})")
+        # Convert probability to score and determine category
+        probability = result['probability']
+        if probability >= 0.75:
+            category = "hot"
+        elif probability >= 0.50:
+            category = "warm"
+        else:
+            category = "cold"
         
-        return ScoreResponse(**result)
+        # Calculate confidence (using probability as confidence for now)
+        confidence = probability
+        
+        ml_logger.info(f"Score: {category} ({probability:.3f})")
+        
+        return ScoreResponse(
+            score=probability,
+            category=category,
+            confidence=confidence
+        )
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -115,16 +135,14 @@ async def train_score(request: TrainRequest):
     - score (0 or 1)
     """
     try:
-        metrics = await score_predictor.train(
+        metrics =  train_and_save_lead_score(
             data_path=request.data_path,
-            validation_split=request.validation_split,
-            grid_search=request.grid_search
         )
         
         return TrainResponse(
             success=True,
-            metrics=metrics,
-            message=f"Model trained successfully. F1: {metrics['f1_score']:.3f}"
+            metrics=metrics['metrics'],  # Only return the actual metrics, not the full result
+            message=f"Model trained successfully. F1: {metrics['metrics']['f1_score']:.3f}"
         )
         
     except Exception as e:

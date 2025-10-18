@@ -116,6 +116,15 @@ async def health_check():
         except Exception:
             model_registry_status = "unhealthy"
         
+        # Check vector database (for RAG)
+        vector_db_status = "healthy"
+        #try:
+            #from app.ml.rag import RAGChain
+            #rag_chain = RAGChain()
+            #rag_chain.get_vectorstore_stats()
+        #except Exception:
+        #    vector_db_status = "unhealthy"
+        
         services = {
             "model_registry": model_registry_status,
         }
