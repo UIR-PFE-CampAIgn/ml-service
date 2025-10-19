@@ -1,6 +1,6 @@
 import os
+import asyncio
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional, AsyncGenerator, Tuple
 
@@ -8,6 +8,7 @@ from app.ml.intent import IntentPredictor
 from app.ml.rag.retrieval import retrieve, fill
 from huggingface_hub import hf_hub_download
 from app.core.logging import api_logger
+from app.clients.gateway import GatewayClient
 
 try:
     from llama_cpp import Llama  # optional local GGUF generator
@@ -16,7 +17,7 @@ except Exception:
 
 
 router = APIRouter()
-
+gw = GatewayClient()
 
 class ChatRequest(BaseModel):
     query: str = Field(..., description="User chat message/question")
@@ -122,8 +123,14 @@ class FeedResponse(BaseModel):
     status: str = "stored"
 
 
-@router.post("/intent_answer")
-async def intent_answer(request: ChatRequest) -> StreamingResponse:
+class ChatAnswerResponse(BaseModel):
+    answer: str = ""
+    model: Optional[str] = None
+    confidence: Optional[float] = None
+
+
+@router.post("/chat/answer", response_model=ChatAnswerResponse)
+async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
     """
     Predict intent, retrieve relevant chunks, optionally call a local LLM, and send final answer.
 
@@ -133,107 +140,102 @@ async def intent_answer(request: ChatRequest) -> StreamingResponse:
     - error: emitted if any failure occurs
     """
 
-    async def generate() -> AsyncGenerator[str, None]:
-        userQuery = request.query
-        
-        try:
-            predictor = IntentPredictor()
-            pred = await predictor.predict(userQuery)
-            api_logger.info(
-                "chat.intent: predicted intent=%s conf=%.3f chat_id=%s",
-                pred.get("intent"), float(pred.get("confidence", 0.0)), request.chat_id,
-            )
+    userQuery = request.query
 
-            low_conf = float(pred.get("confidence", 0.0)) < request.min_confidence
+    try:
+        predictor = IntentPredictor()
+        pred = await predictor.predict(userQuery)
+        api_logger.info(
+            "chat.intent: predicted intent=%s conf=%.3f chat_id=%s",
+            pred.get("intent"), float(pred.get("confidence", 0.0)), request.chat_id,
+        )
 
-            # Emit intent info first
-            intent_event = ChatChunk(
-                event="intent_info",
-                intent=pred.get("intent"),
-                confidence=float(pred.get("confidence", 0.0)),
-                top_predictions=pred.get("top_predictions", []),
-                low_confidence=low_conf,
-                chat_id=request.chat_id,
-            )
-            yield f"data: {intent_event.model_dump_json()}\n\n"
-            
-            api_logger.info(
-                "chat.retrieve: querying vectordb top_k=%d", request.context_limit
-            )
-            relevantData = retrieve(userQuery, top_k=request.context_limit)
-            api_logger.info(
-                "chat.retrieve: got %d hits; first_id=%s",
-                len(relevantData),
-                (relevantData[0]["id"] if relevantData else None),
-            )
+        low_conf = float(pred.get("confidence", 0.0)) < request.min_confidence
 
-            context_text = _format_context(relevantData, request.context_limit)
+        api_logger.info("chat.retrieve: querying vectordb top_k=%d", request.context_limit)
+        relevantData = retrieve(userQuery, top_k=request.context_limit)
+        api_logger.info(
+            "chat.retrieve: got %d hits; first_id=%s",
+            len(relevantData),
+            (relevantData[0]["id"] if relevantData else None),
+        )
 
-            # Generate answer
-            answer: Optional[str] = None
-            engine, status = _get_llm_engine()
-            api_logger.info("chat.llm: engine_status=%s", status)
-            if status == "llm_not_configured":
-                api_logger.warning(
-                    "chat.llm: not configured; set LLM_GGUF_REPO and LLM_GGUF_FILENAME env vars"
-                )
-            elif status == "llama_cpp_unavailable":
-                api_logger.error(
-                    "chat.llm: llama-cpp-python not installed or failed to import"
-                )
-            elif status == "llm_init_failed":
-                api_logger.error("chat.llm: initialization failed (download/init)")
-            if engine and status == "ok":
-                prompt = (
-                    "You are a helpful assistant. Use the provided context to answer the question.\n"
-                    "If the answer is not in the context, say you don't know.\n\n"
-                    f"Context:\n{context_text}\n\n"
-                    f"Question: {userQuery}\nAnswer:"
-                )
-                try:
-                    if hasattr(engine, "create_chat_completion"):
-                        comp = engine.create_chat_completion(
-                            messages=[
-                                {"role": "system", "content": "You are a concise assistant."},
-                                {"role": "user", "content": prompt},
-                            ],
-                            temperature=float(request.temperature),
-                            max_tokens=512,
-                        )
-                        answer = comp["choices"][0]["message"]["content"].strip()
-                    else:
-                        comp = engine.create_completion(
-                            prompt=prompt,
-                            temperature=float(request.temperature),
-                            max_tokens=512,
-                        )
-                        answer = comp["choices"][0]["text"].strip()
-                    api_logger.info(
-                        "chat.llm: generated %d chars of answer", len(answer)
+        context_text = _format_context(relevantData, request.context_limit)
+
+        # Generate answer
+        answer: Optional[str] = None
+        engine, status = _get_llm_engine()
+        api_logger.info("chat.llm: engine_status=%s", status)
+        if status == "llm_not_configured":
+            api_logger.warning(
+                "chat.llm: not configured; set LLM_GGUF_REPO and LLM_GGUF_FILENAME env vars"
+            )
+        elif status == "llama_cpp_unavailable":
+            api_logger.error(
+                "chat.llm: llama-cpp-python not installed or failed to import"
+            )
+        elif status == "llm_init_failed":
+            api_logger.error("chat.llm: initialization failed (download/init)")
+        if engine and status == "ok":
+            prompt = (
+                "You are a helpful assistant. Use the provided context to answer the question.\n"
+                "If the answer is not in the context, say you don't know.\n\n"
+                f"Context:\n{context_text}\n\n"
+                f"Question: {userQuery}\nAnswer:"
+            )
+            try:
+                if hasattr(engine, "create_chat_completion"):
+                    comp = engine.create_chat_completion(
+                        messages=[
+                            {"role": "system", "content": "You are a concise assistant."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        temperature=float(request.temperature),
+                        max_tokens=512,
                     )
-                except Exception as e:
-                    api_logger.exception("chat.llm: generation failed: %s", e)
-                    answer = None
+                    answer = comp["choices"][0]["message"]["content"].strip()
+                else:
+                    comp = engine.create_completion(
+                        prompt=prompt,
+                        temperature=float(request.temperature),
+                        max_tokens=512,
+                    )
+                    answer = comp["choices"][0]["text"].strip()
+                api_logger.info("chat.llm: generated %d chars of answer", len(answer))
+            except Exception as e:
+                api_logger.exception("chat.llm: generation failed: %s", e)
+                answer = None
 
-            if not answer:
-                preview = context_text[:800] + ("..." if len(context_text) > 800 else "")
-                answer = (
-                    "No LLM configured; returning top relevant snippets:\n\n" + preview
+        if not answer:
+            answer = ""  # respond with empty string by default
+
+        # Schedule sending to external gateway (fire-and-forget)
+        try:
+            asyncio.create_task(
+                gw.send_chat_webhook(
+                    intent=str(pred.get("intent", "")),
+                    reply=answer or "",
+                    chat_id=request.chat_id,
+                    metadata={
+                        "low_confidence": low_conf,
+                        "retrieved_count": len(relevantData),
+                    },
                 )
-
-            final = ChatChunk(event="complete", content=answer, is_complete=True, chat_id=request.chat_id)
-            yield f"data: {final.model_dump_json()}\n\n"
-
+            )
+            api_logger.info("chat.gateway: webhook scheduled chat_id=%s", request.chat_id)
         except Exception as e:
-            api_logger.exception("chat.intent_answer: error: %s", e)
-            err = ChatChunk(event="error", content=str(e))
-            yield f"data: {err.model_dump_json()}\n\n"
+            api_logger.exception("chat.gateway: scheduling failed: %s", e)
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/plain",
-        headers={"Cache-Control": "no-cache"},
-    )
+        model_name = os.environ.get("LLM_GGUF_FILENAME") or os.environ.get("LLM_GGUF_REPO")
+        return ChatAnswerResponse(
+            answer=answer or "",
+            model=model_name,
+            confidence=float(pred.get("confidence", 0.0)),
+        )
+
+    except Exception as e:
+        api_logger.exception("chat.chat_answer: error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/feed_vector", response_model=FeedResponse)

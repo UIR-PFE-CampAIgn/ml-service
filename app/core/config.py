@@ -38,6 +38,13 @@ class Settings(BaseSettings):
         default=["http://localhost:3000", "http://localhost:8080"],
         env="CORS_ORIGINS"
     )
+
+    # Gateway (external API) settings
+    gateway_webhook_url: Optional[str] = Field(default=None, env="GATEWAY_WEBHOOK_URL")
+    gateway_base_url: Optional[str] = Field(default=None, env="GATEWAY_BASE_URL")
+    gateway_webhook_path: str = Field(default="/webhooks/chat", env="GATEWAY_WEBHOOK_PATH")
+    gateway_api_key: Optional[str] = Field(default=None, env="GATEWAY_API_KEY")
+    gateway_timeout: int = Field(default=10, env="GATEWAY_TIMEOUT")
     
     class Config:
         env_file = ".env"
