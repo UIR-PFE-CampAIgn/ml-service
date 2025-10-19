@@ -1,11 +1,11 @@
 import os
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional, AsyncGenerator, Tuple
 
 from app.ml.intent import IntentPredictor
-from app.ml.rag.retrieval import retrieve
+from app.ml.rag.retrieval import retrieve, fill
 from huggingface_hub import hf_hub_download
 from app.core.logging import api_logger
 
@@ -109,6 +109,17 @@ class ChatChunk(BaseModel):
     low_confidence: Optional[bool] = None
     is_complete: bool = False
     chat_id: Optional[str] = None
+
+
+class FeedRequest(BaseModel):
+    content: str = Field(..., description="Text content to store in the vector DB")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional metadata for the content")
+    id: Optional[str] = Field(default=None, description="Optional custom ID for the stored record")
+
+
+class FeedResponse(BaseModel):
+    id: str
+    status: str = "stored"
 
 
 @router.post("/intent_answer")
@@ -223,3 +234,19 @@ async def intent_answer(request: ChatRequest) -> StreamingResponse:
         media_type="text/plain",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+@router.post("/feed_vector", response_model=FeedResponse)
+async def feed_vector(request: FeedRequest) -> FeedResponse:
+    """Embed and store a single text in the vector database.
+
+    Returns the stored document ID and status.
+    """
+    try:
+        api_logger.info("feed_vector: storing content len=%d", len(request.content or ""))
+        doc_id = fill(request.content, metadata=request.metadata, id=request.id)
+        api_logger.info("feed_vector: stored id=%s", doc_id)
+        return FeedResponse(id=doc_id, status="stored")
+    except Exception as e:
+        api_logger.exception("feed_vector: failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Vector feed failed: {e}")
