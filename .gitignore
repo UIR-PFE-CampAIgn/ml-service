@@ -3,3 +3,7 @@
 *.log
 .env
 */logs
+/models/.cache
+/models/*.gguf
+/models/xet
+data/vectordb

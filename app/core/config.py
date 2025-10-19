@@ -22,19 +22,9 @@ class Settings(BaseSettings):
     aws_access_key_id: Optional[str] = Field(default=None, env="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: Optional[str] = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
     
-    # Database Settings (for RAG)
-    vector_db_type: str = Field(default="chroma", env="VECTOR_DB_TYPE")
-    vector_db_path: str = Field(default="./data/vectordb", env="VECTOR_DB_PATH")
-    
     # ML Model Settings
     intent_model_path: str = Field(default="models/intent/latest", env="INTENT_MODEL_PATH")
     score_model_path: str = Field(default="models/score/latest", env="SCORE_MODEL_PATH")
-    
-    # LLM Settings (for RAG)
-    llm_provider: str = Field(default="ollama", env="LLM_PROVIDER")  # ollama, openai, etc.
-    llm_model: str = Field(default="llama2", env="LLM_MODEL")
-    llm_base_url: str = Field(default="http://localhost:11434", env="LLM_BASE_URL")
-    llm_api_key: Optional[str] = Field(default=None, env="LLM_API_KEY")
     
     # Logging Settings
     log_level: str = Field(default="INFO", env="LOG_LEVEL")

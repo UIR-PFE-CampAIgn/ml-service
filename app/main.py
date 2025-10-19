@@ -7,7 +7,7 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.core.logging import setup_logging, app_logger
-from app.api.v1 import intent, score, train
+from app.api.v1 import intent, score, train, chat
 from app.schemas import HealthResponse
 
 
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="Machine Learning Service API with Intent Classification, Score Prediction, and RAG capabilities",
+    description="Machine Learning Service API with Intent Classification and Score Prediction",
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
     lifespan=lifespan
@@ -75,12 +75,13 @@ app.include_router(
     responses={404: {"description": "Not found"}}
 )
 
-# app.include_router(
-#     rag.router,
-#     prefix="/api/v1",
-#     tags=["rag"],
-#     responses={404: {"description": "Not found"}}
-# )
+
+app.include_router(
+    chat.router,
+    prefix="/api/v1",
+    tags=["chat"],
+    responses={404: {"description": "Not found"}}
+)
 
 app.include_router(
     train.router,
@@ -115,18 +116,8 @@ async def health_check():
         except Exception:
             model_registry_status = "unhealthy"
         
-        # Check vector database (for RAG)
-        vector_db_status = "healthy"
-        try:
-            from app.ml.rag import RAGChain
-            rag_chain = RAGChain()
-            rag_chain.get_vectorstore_stats()
-        except Exception:
-            vector_db_status = "unhealthy"
-        
         services = {
             "model_registry": model_registry_status,
-            "vector_database": vector_db_status,
         }
         
         overall_status = "healthy" if all(

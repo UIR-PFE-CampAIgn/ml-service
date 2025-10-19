@@ -4,27 +4,42 @@ services:
   # ML Service
   ml-service:
     build: .
+    user: "0:0" # quick fix: ensure write access to mounted volumes
     ports:
       - "8000:8000"
     environment:
       - DEBUG=true
+      - HOST=0.0.0.0
+      - PORT=8000
       - LOG_LEVEL=INFO
+      # Storage
       - MODEL_STORAGE_TYPE=minio
       - S3_BUCKET=ml-models
+      - S3_REGION=us-east-1
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
-      - LLM_PROVIDER=ollama
-      - LLM_BASE_URL=http://ollama:11434
-      - LLM_MODEL=llama2
+      # Chroma/telemetry
+      - ANONYMIZED_TELEMETRY=false
       - VECTOR_DB_PATH=/app/data/vectordb
+      - RAG_COLLECTION=documents
+      # Hugging Face cache
+      - HF_HOME=/app/models
+      # Embedding model (BGE GGUF)
+      - BGE_GGUF_REPO=CompendiumLabs/bge-base-en-v1.5-gguf
+      - BGE_GGUF_FILENAME=bge-base-en-v1.5-q8_0.gguf
+      # Local LLM for generation (configure to your preferred model)
+      - LLM_GGUF_REPO=Qwen/Qwen2.5-0.5B-Instruct-GGUF
+      - LLM_GGUF_FILENAME=qwen2.5-0.5b-instruct-q4_k_m.gguf
+      - LLM_N_CTX=4096
+      - LLM_N_GPU_LAYERS=0
+
     volumes:
-      - ./data/vectordb:/app/data/vectordb
+      - ./data:/app/data
       - ./logs:/app/logs
       - ./models:/app/models
     depends_on:
       - minio
-      - ollama
     networks:
       - ml-network
     restart: unless-stopped
@@ -44,27 +59,6 @@ services:
     networks:
       - ml-network
     restart: unless-stopped
-
-  # Ollama (Local LLM server)
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    networks:
-      - ml-network
-    restart: unless-stopped
-    # Optionally enable GPU support
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
 
   # MinIO Client (for bucket creation)
   createbuckets:
@@ -88,6 +82,4 @@ networks:
 
 volumes:
   minio_data:
-    driver: local
-  ollama_models:
     driver: local
