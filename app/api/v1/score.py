@@ -39,18 +39,7 @@ class ScoreRequest(BaseModel):
             raise ValueError(f"time_of_day must be one of: {valid}")
         return v
     
-    class Config:
-        schema_extra = {
-            "example": {
-                "messages_in_session": 10,
-                "user_msg": "I want to buy. How much?",
-                "conversation_duration_minutes": 15.5,
-                "user_response_time_avg_seconds": 45.0,
-                "user_initiated_conversation": True,
-                "is_returning_customer": False,
-                "time_of_day": "business_hours"
-            }
-        }
+   
 
 
 class ScoreResponse(BaseModel):

@@ -38,51 +38,56 @@ class ModelRegistry:
         return boto3.client('s3', **client_kwargs)
     
     def save_model(
-        self,
-        model: Any,
-        model_name: str,
+        self, 
+        model: Any, 
+        model_name: str, 
         version: Optional[str] = None,
         metadata: Optional[Dict] = None,
         serializer: str = 'joblib'
     ) -> str:
+        """
+        Save a model to the registry.
+        
+        Args:
+            model: Model object to save
+            model_name: Name of the model
+            version: Model version (defaults to timestamp)
+            metadata: Additional metadata to store
+            serializer: Serialization method ('joblib' or 'pickle')
+            
+        Returns:
+            S3 key of the saved model
+        """
         if version is None:
             version = datetime.now().strftime("%Y%m%d_%H%M%S")
-
+        
         model_key = f"models/{model_name}/{version}/model"
         metadata_key = f"models/{model_name}/{version}/metadata.json"
-
-        tmp_path = None
+        
         try:
-            # ✅ Create and close a temp file immediately (Windows-safe)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".joblib") as tmp:
-                tmp_path = tmp.name
-
-            # ✅ Dump model AFTER the file is closed
-            if serializer == 'joblib':
-                joblib.dump(model, tmp_path)
-                model_key += '.joblib'
-            elif serializer == 'pickle':
-                with open(tmp_path, 'wb') as f:
-                    pickle.dump(model, f)
-                model_key += '.pkl'
-            else:
-                raise ValueError(f"Unsupported serializer: {serializer}")
-
-            # ✅ Wait briefly for file lock release
-            import time
-            time.sleep(0.2)
-
-            # ✅ Upload to S3 or MinIO
-            self.s3_client.upload_file(tmp_path, self.bucket_name, model_key)
-
-            # ✅ Clean up temporary file
-            os.remove(tmp_path)
-
-            # Save metadata
+            # Serialize model to temporary file
+            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                if serializer == 'joblib':
+                    joblib.dump(model, tmp_file.name)
+                    model_key += '.joblib'
+                elif serializer == 'pickle':
+                    with open(tmp_file.name, 'wb') as f:
+                        pickle.dump(model, f)
+                    model_key += '.pkl'
+                else:
+                    raise ValueError(f"Unsupported serializer: {serializer}")
+                
+                # Upload model file
+                self.s3_client.upload_file(tmp_file.name, self.bucket_name, model_key)
+                
+                # Clean up temporary file
+                os.unlink(tmp_file.name)
+            
+            # Save metadata if provided
             if metadata:
                 metadata['saved_at'] = datetime.now().isoformat()
                 metadata['serializer'] = serializer
-
+                
                 import json
                 metadata_str = json.dumps(metadata, indent=2)
                 self.s3_client.put_object(
@@ -91,7 +96,7 @@ class ModelRegistry:
                     Body=metadata_str.encode('utf-8'),
                     ContentType='application/json'
                 )
-
+            
             # Update latest pointer
             latest_key = f"models/{model_name}/latest"
             self.s3_client.put_object(
@@ -100,21 +105,13 @@ class ModelRegistry:
                 Body=version.encode('utf-8'),
                 ContentType='text/plain'
             )
-
+            
             logger.info(f"Model saved successfully: {model_key}")
             return model_key
-
+            
         except Exception as e:
             logger.error(f"Failed to save model {model_name}: {e}")
             raise
-
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except OSError:
-                    pass
-
     
     def load_model(self, model_name: str, version: str = 'latest') -> Any:
         """
@@ -144,35 +141,27 @@ class ModelRegistry:
                 try:
                     # Download model to temporary file
                     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                        tmp_file_path = tmp_file.name
-                        # Close the file handle before downloading
-                        tmp_file.close()
-                        
                         self.s3_client.download_file(
                             self.bucket_name, 
                             model_key, 
-                            tmp_file_path
+                            tmp_file.name
                         )
                         
                         # Load model
                         if ext == '.joblib':
-                            model = loader(tmp_file_path)
+                            model = loader(tmp_file.name)
                         else:  # pickle
-                            with open(tmp_file_path, 'rb') as f:
+                            with open(tmp_file.name, 'rb') as f:
                                 model = loader(f)
+                        
+                        # Clean up
+                        os.unlink(tmp_file.name)
                         
                         logger.info(f"Model loaded successfully: {model_key}")
                         return model
                         
                 except self.s3_client.exceptions.NoSuchKey:
                     continue
-                finally:
-                    # Clean up the temporary file
-                    try:
-                        if 'tmp_file_path' in locals():
-                            os.unlink(tmp_file_path)
-                    except (OSError, FileNotFoundError):
-                        pass  # File might already be deleted
             
             raise FileNotFoundError(f"Model not found: {model_name} v{version}")
             
