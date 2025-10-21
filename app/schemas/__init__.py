@@ -32,27 +32,7 @@ class ScorePredictionResponse(BaseModel):
     model_used: str
 
 
-# RAG Schemas
-class RAGRequest(BaseModel):
-    query: str = Field(..., description="Question or query for RAG system")
-    context_limit: int = Field(default=5, ge=1, le=20, description="Number of context documents to retrieve")
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="LLM temperature for generation")
-
-
-class SourceDocument(BaseModel):
-    content: str
-    metadata: Dict[str, Any] = {}
-
-
-class RAGResponse(BaseModel):
-    query: str
-    answer: str
-    source_documents: List[SourceDocument]
-
-
-class RAGChunk(BaseModel):
-    content: str
-    is_complete: bool = False
+## RAG Schemas removed
 
 
 # Training Schemas

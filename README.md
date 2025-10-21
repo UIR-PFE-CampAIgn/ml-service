@@ -1,12 +1,11 @@
 # ML Service
 
-A comprehensive Machine Learning service built with FastAPI that provides intent classification, score prediction, and RAG (Retrieval-Augmented Generation) capabilities.
+A comprehensive Machine Learning service built with FastAPI that provides intent classification and score prediction capabilities.
 
 ## Features
 
 - **Intent Classification**: TF-IDF + SVM pipeline for text intent classification
 - **Score Prediction**: LogisticRegression and XGBoost pipelines for feature-based scoring
-- **RAG System**: LangChain-based RAG with vector storage for document Q&A
 - **Model Training**: Asynchronous model training with job tracking
 - **Model Registry**: S3/MinIO-based model storage and versioning
 - **REST API**: FastAPI-based REST API with automatic documentation
@@ -22,7 +21,6 @@ ml-service/
 │  │   ├─ v1/
 │  │   │   ├─ intent.py        # GET /predict_intent
 │  │   │   ├─ score.py         # GET /predict_score
-│  │   │   ├─ rag.py           # POST /rag_answer (stream)
 │  │   │   └─ train.py         # POST /train
 │  ├─ core/
 │  │   ├─ config.py            # pydantic BaseSettings
@@ -31,13 +29,12 @@ ml-service/
 │  ├─ ml/
 │  │   ├─ intent.py            # TF-IDF + SVM pipeline
 │  │   ├─ score.py             # LogReg / XGB pipeline
-│  │   └─ rag.py               # LangChain RAG chain
 │  ├─ schemas/                 # pydantic request/response models
 │  └─ main.py                  # FastAPI instance
 ├─ tests/
 │  └─ unit/
 ├─ Dockerfile
-├─ docker-compose.yml          # local dev (Ollama + MinIO)
+├─ docker-compose.yml          # local dev (MinIO)
 ├─ requirements.txt
 ├─ .github/workflows/ci.yml
 └─ README.md
@@ -48,20 +45,22 @@ ml-service/
 ### Using Docker Compose (Recommended)
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd ml-service
    ```
 
 2. **Start services with Docker Compose**
+
    ```bash
    docker-compose up -d
    ```
 
    This will start:
+
    - ML Service (FastAPI) on `http://localhost:8000`
    - MinIO (S3-compatible storage) on `http://localhost:9000`
-   - Ollama (Local LLM) on `http://localhost:11434`
 
 3. **Access the API documentation**
    - Swagger UI: `http://localhost:8000/docs`
@@ -70,6 +69,7 @@ ml-service/
 ### Local Development
 
 1. **Install Python dependencies**
+
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -77,11 +77,12 @@ ml-service/
    ```
 
 2. **Set environment variables**
+
    ```bash
    export DEBUG=true
    export LOG_LEVEL=INFO
    export MODEL_STORAGE_TYPE=local
-   export LLM_PROVIDER=mock  # or configure Ollama/OpenAI
+   # No LLM configuration required
    ```
 
 3. **Run the service**
@@ -110,18 +111,6 @@ curl -X GET "http://localhost:8000/api/v1/predict_score" \
   }'
 ```
 
-### RAG (Retrieval-Augmented Generation)
-
-```bash
-# Ask a question using RAG
-curl -X POST "http://localhost:8000/api/v1/rag_answer" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "What is machine learning?",
-    "context_limit": 5,
-    "temperature": 0.7
-  }'
-```
 
 ### Model Training
 
@@ -158,13 +147,7 @@ S3_ENDPOINT_URL=http://localhost:9000
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 
-# LLM Settings (for RAG)
-LLM_PROVIDER=ollama
-LLM_MODEL=llama2
-LLM_BASE_URL=http://localhost:11434
-
-# Vector Database
-VECTOR_DB_PATH=./data/vectordb
+# (RAG removed — no LLM or vector DB settings required)
 
 # Logging
 LOG_LEVEL=INFO
@@ -275,15 +258,15 @@ spec:
         app: ml-service
     spec:
       containers:
-      - name: ml-service
-        image: ml-service:latest
-        ports:
-        - containerPort: 8000
-        env:
-        - name: MODEL_STORAGE_TYPE
-          value: "s3"
-        - name: S3_BUCKET
-          value: "ml-models"
+        - name: ml-service
+          image: ml-service:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MODEL_STORAGE_TYPE
+              value: "s3"
+            - name: S3_BUCKET
+              value: "ml-models"
 ```
 
 ## Monitoring
@@ -316,21 +299,19 @@ The service provides basic health and status information. For production monitor
 
 - **Horizontal**: Deploy multiple service instances behind a load balancer
 - **Vertical**: Increase CPU and memory allocations
-- **GPU Support**: Enable GPU for transformer models in RAG
+--
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **Model Loading Errors**
+
    - Check S3/MinIO connectivity
    - Verify bucket permissions
    - Ensure model files exist
 
-2. **RAG Performance**
-   - Increase vector database resources
-   - Optimize embedding model size
-   - Adjust context limits
+2. --
 
 3. **Memory Issues**
    - Monitor model memory usage
@@ -340,6 +321,7 @@ The service provides basic health and status information. For production monitor
 ### Logs
 
 Logs are available in:
+
 - Console output (development)
 - `./logs/ml-service.log` (file logging)
 - Container logs: `docker logs <container_id>`
@@ -359,6 +341,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Support
 
 For questions and support:
+
 - Create an issue in the repository
 - Check the documentation
 - Review the API docs at `/docs`

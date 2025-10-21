@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  ml-service:
+    # Hot-reload for local development; no image rebuild on code changes
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/app/app
+    environment:
+      # Helps file change detection in some Docker Desktop setups
+      - WATCHFILES_FORCE_POLLING=true

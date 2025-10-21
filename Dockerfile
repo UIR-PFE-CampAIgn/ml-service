@@ -13,6 +13,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    cmake \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
