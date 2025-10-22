@@ -1,9 +1,3 @@
-"""
-Lead Score API Router
-=====================
-Update your existing app/api/v1/score.py with these endpoints
-"""
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional

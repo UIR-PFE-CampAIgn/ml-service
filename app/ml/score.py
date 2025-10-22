@@ -55,6 +55,7 @@ class ScorePredictor:
             self.label_encoder = None
             self.feature_columns = None
 
+
     def _prepare_features(self, data: Union[Dict[str, Any], pd.DataFrame]) -> pd.DataFrame:
         """Convert input to DataFrame. No auto-fill."""
         if isinstance(data, dict):
@@ -62,6 +63,7 @@ class ScorePredictor:
         else:
             df = data.copy()
         return df
+
 
     def _create_logistic_regression_pipeline(self, hyperparameters: Dict[str, Any]) -> Pipeline:
         lr_params = {
@@ -117,6 +119,7 @@ class ScorePredictor:
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
 
+
     async def train(
         self,
         data_path: str,
@@ -127,7 +130,6 @@ class ScorePredictor:
         """Train multi-class model."""
         ml_logger.info(f"Training {self.model_type} model...")
         hyperparameters = hyperparameters or {}
-        
         try:
             df = pd.read_csv(data_path)
             if target_column not in df.columns:
@@ -162,6 +164,7 @@ class ScorePredictor:
                         'classifier__max_depth': [4, 6],
                         'classifier__learning_rate': [0.05, 0.1]
                     }
+                else:
                 else:
                     param_grid = {
                         'classifier__C': [0.1, 1.0, 10.0],
@@ -207,6 +210,7 @@ class ScorePredictor:
             ml_logger.error(f"Training failed: {e}")
             raise
 
+
     async def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
         """Predict lead category with confidence."""
         self._load_model()
@@ -236,6 +240,7 @@ class ScorePredictor:
             ml_logger.error(f"Prediction failed: {e}")
             raise
 
+
     async def batch_predict(self, features_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Batch prediction."""
         self._load_model()
@@ -264,6 +269,7 @@ class ScorePredictor:
         except Exception as e:
             ml_logger.error(f"Batch prediction failed: {e}")
             raise
+
 
     def get_feature_importance(self) -> Dict[str, float]:
         """Return sorted feature importance."""
