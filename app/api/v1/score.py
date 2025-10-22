@@ -1,43 +1,136 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
-from typing import Dict, Any, List
-
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field, validator
+from typing import List, Optional
+from app.ml.train_score import train_and_save_lead_score
 from app.ml.score import ScorePredictor
+from app.core.logging import ml_logger
 
-router = APIRouter()
+# Initialize score predictor
+score_predictor = ScorePredictor()
 
+
+router = APIRouter(prefix="/ml/v1", tags=["Lead Scoring"])
+
+
+# ============================================
+# REQUEST/RESPONSE MODELS
+# ============================================
 
 class ScoreRequest(BaseModel):
-    features: Dict[str, Any]
-    model_type: str = "logistic_regression"  # or "xgboost"
+    """Lead score prediction request."""
+    messages_in_session: int = Field(..., ge=0, description="Number of messages")
+    user_msg: str = Field(..., min_length=1, description="Latest user message")
+    conversation_duration_minutes: float = Field(..., ge=0)
+    user_response_time_avg_seconds: float = Field(..., ge=0)
+    user_initiated_conversation: bool
+    is_returning_customer: bool
+    time_of_day: str = Field(..., description="business_hours, extended_hours, or off_hours")
+    
+    @validator('time_of_day')
+    def validate_time_of_day(cls, v):
+        valid = ['business_hours', 'extended_hours', 'off_hours']
+        if v not in valid:
+            raise ValueError(f"time_of_day must be one of: {valid}")
+        return v
+    
+   
 
 
 class ScoreResponse(BaseModel):
-    score: float
-    probability: float
-    model_used: str
+    """Lead score prediction response."""
+    score: float = Field(..., description="Probability 0.0-1.0")
+    category: str = Field(..., description="hot, warm, or cold")
+    confidence: float = Field(..., description="Confidence 0.0-1.0")
 
 
-@router.get("/predict_score")
-async def predict_score(
-    features: Dict[str, Any],
-    model_type: str = "logistic_regression"
-) -> ScoreResponse:
+class TrainRequest(BaseModel):
+    """Training request."""
+    data_path: str = Field(..., description="Path to training CSV")
+    grid_search: bool = Field(False, description="Perform grid search?")
+    validation_split: float = Field(0.2, ge=0.1, le=0.5)
+
+
+class TrainResponse(BaseModel):
+    """Training response."""
+    success: bool
+    metrics: dict
+    message: str
+
+
+# ============================================
+# ENDPOINTS
+# ============================================
+
+@router.post("/predict_score", response_model=ScoreResponse)
+async def predict_score(request: ScoreRequest):
     """
-    Predict score using LogReg or XGBoost pipeline.
+    Predict lead qualification score.
     
-    Args:
-        features: Input features dictionary
-        model_type: Model type to use ("logistic_regression" or "xgboost")
-        
     Returns:
-        Predicted score, probability, and model information
+    - score >= 0.75: Hot lead (fire)
+    - score >= 0.50: Warm lead (sun)
+    - score < 0.50: Cold lead (snowflake)
     """
-    predictor = ScorePredictor(model_type=model_type)
-    result = await predictor.predict(features)
+    try:
+        features = request.dict()
+        result = await score_predictor.predict(features)
+        
+        # NEW: Use 'score' from result (which is the max probability)
+        probability = result['score']  # This is the confidence of the predicted class
+        category = result['category']  # Already computed: 'cold', 'warm', 'hot'
+        confidence = result['confidence']
+
+        ml_logger.info(f"Score: {category} ({probability:.3f})")
+        
+        return ScoreResponse(
+            score=probability,
+            category=category,
+            confidence=confidence
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        ml_logger.error(f"Prediction error: {e}")
+        raise HTTPException(status_code=500, detail="Prediction failed")
+@router.post("/train_score", response_model=TrainResponse)
+async def train_score(request: TrainRequest):
+    """
+    Train the lead score model.
     
-    return ScoreResponse(
-        score=result["score"],
-        probability=result["probability"],
-        model_used=model_type
-    )
+    Requires CSV with columns:
+    - messages_in_session
+    - user_msg
+    - conversation_duration_minutes
+    - user_response_time_avg_seconds
+    - user_initiated_conversation
+    - is_returning_customer
+    - time_of_day
+    - score (0 or 1)
+    """
+    try:
+        metrics =  train_and_save_lead_score(
+            data_path=request.data_path,
+        )
+        
+        return TrainResponse(
+            success=True,
+            metrics=metrics['metrics'],  # Only return the actual metrics, not the full result
+            message=f"Model trained successfully. F1: {metrics['metrics']['f1_score']:.3f}"
+        )
+        
+    except Exception as e:
+        ml_logger.error(f"Training error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/score_health")
+async def score_health():
+    """Health check for score predictor."""
+    model_loaded = score_predictor.pipeline is not None
+    
+    return {
+        "status": "healthy" if model_loaded else "degraded",
+        "model_loaded": model_loaded,
+        "service": "lead_score_predictor"
+    }

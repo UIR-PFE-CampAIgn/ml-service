@@ -9,3 +9,4 @@ services:
     environment:
       # Helps file change detection in some Docker Desktop setups
       - WATCHFILES_FORCE_POLLING=true
+      - GATEWAY_WEBHOOK_URL=http://localhost:3000

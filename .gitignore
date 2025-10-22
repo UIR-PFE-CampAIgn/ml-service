@@ -7,3 +7,5 @@
 /models/*.gguf
 /models/xet
 data/vectordb
+data/score
+venv
