@@ -1,14 +1,12 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Optional, Union
-from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 import xgboost as xgb
 import joblib
-import asyncio
 
 from app.core.config import settings
 from app.core.model_registry import model_registry
@@ -16,257 +14,271 @@ from app.core.logging import ml_logger
 
 
 class ScorePredictor:
-    """Score prediction using LogisticRegression or XGBoost pipeline."""
-    ## xgboost -> multi class (many segmentation)
-    ## decision_tree_classifier -> multi classification
-    ## logistic_regression -> performant when it comes to 2 classes
-    def __init__(self, model_type: str = "logistic_regression", model_path: Optional[str] = None):
-        self.model_type = model_type  # "logistic_regression" or "xgboost"
-    """Score prediction using LogisticRegression or XGBoost pipeline."""
-    ## xgboost -> multi class (many segmentation)
-    ## decision_tree_classifier -> multi classification
-    ## logistic_regression -> performant when it comes to 2 classes
-    def __init__(self, model_type: str = "logistic_regression", model_path: Optional[str] = None):
-        self.model_type = model_type  # "logistic_regression" or "xgboost"
+    """
+    Multi-class lead scoring predictor (cold / warm / hot).
+    Supports LogisticRegression (fallback) and XGBoost (recommended).
+    """
+    
+    def __init__(self, model_type: str = "xgboost", model_path: Optional[str] = None):
+        self.model_type = model_type.lower()  # "xgboost" or "logistic_regression"
         self.model_path = model_path or settings.score_model_path
         self.pipeline = None
+        self.label_encoder = None
         self.feature_columns = None
-        # Don't load model at initialization - load lazily when needed
-    
+
     def _load_model(self):
-        """Load the trained model from registry."""
+        """Load pipeline + label_encoder from model registry."""
         try:
-            # Try the lead scoring model first (from train_score.py)
             model_key = "lead_scoring"
-            ml_logger.info(f"Attempting to load model: {model_key}")
+            ml_logger.info(f"Loading model: {model_key}")
             model_data = model_registry.load_model(model_key, version="latest")
             if model_data:
                 self.pipeline = model_data.get("pipeline")
-                self.feature_columns = model_data.get("feature_columns")  # just load columns
-                ml_logger.info(f"Lead scoring model loaded successfully")
+                self.label_encoder = model_data.get("label_encoder")
+                self.feature_columns = model_data.get("feature_columns")
+                if self.label_encoder is None:
+                    ml_logger.warning("label_encoder missing in model data")
+                ml_logger.info("Lead scoring model loaded successfully")
                 return
-            else:
-                ml_logger.warning(f"No model data found for {model_key}")
-            
-            # Fallback to the old naming convention
+
+            # Fallback
             model_key = f"score_{self.model_type}"
             model_data = model_registry.load_model(model_key, version="latest")
             if model_data:
                 self.pipeline = model_data.get("pipeline")
+                self.label_encoder = model_data.get("label_encoder")
                 self.feature_columns = model_data.get("feature_columns")
-                ml_logger.info(f"Score model ({self.model_type}) loaded successfully")
+                ml_logger.info(f"Score model ({self.model_type}) loaded")
         except Exception as e:
-            ml_logger.warning(f"Could not load score model: {e}")
+            ml_logger.warning(f"Failed to load model: {e}")
             self.pipeline = None
+            self.label_encoder = None
             self.feature_columns = None
 
     def _prepare_features(self, data: Union[Dict[str, Any], pd.DataFrame]) -> pd.DataFrame:
-        """Prepare features for model input. Assumes all features are present."""
+        """Convert input to DataFrame. No auto-fill."""
         if isinstance(data, dict):
             df = pd.DataFrame([data])
         else:
             df = data.copy()
-        # Removed automatic addition of missing columns as per reviewer request
         return df
 
     def _create_logistic_regression_pipeline(self, hyperparameters: Dict[str, Any]) -> Pipeline:
-        """Create Logistic Regression pipeline."""
         lr_params = {
             'C': hyperparameters.get('C', 1.0),
             'penalty': hyperparameters.get('penalty', 'l2'),
-            'solver': hyperparameters.get('solver', 'liblinear'),
+            'solver': hyperparameters.get('solver', 'lbfgs'),
             'max_iter': hyperparameters.get('max_iter', 1000),
-            'random_state': 42
+            'random_state': 42,
+            'multi_class': 'multinomial'  # Multi-class support
         }
-        pipeline = Pipeline([
+        return Pipeline([
             ('scaler', StandardScaler()),
-            ('classifier', LogisticRegression(**lr_params))
+            ('classifier', xgb.XGBClassifier(**lr_params))  # Will be replaced in training
         ])
-        return pipeline
 
     def _create_xgboost_pipeline(self, hyperparameters: Dict[str, Any]) -> Pipeline:
-        """Create XGBoost pipeline."""
         xgb_params = {
-            'n_estimators': hyperparameters.get('n_estimators', 100),
+            'n_estimators': hyperparameters.get('n_estimators', 200),
             'max_depth': hyperparameters.get('max_depth', 6),
             'learning_rate': hyperparameters.get('learning_rate', 0.1),
-            'subsample': hyperparameters.get('subsample', 1.0),
-            'colsample_bytree': hyperparameters.get('colsample_bytree', 1.0),
+            'subsample': hyperparameters.get('subsample', 0.8),
+            'colsample_bytree': hyperparameters.get('colsample_bytree', 0.8),
             'reg_alpha': hyperparameters.get('reg_alpha', 0),
             'reg_lambda': hyperparameters.get('reg_lambda', 1),
             'random_state': 42,
-            'eval_metric': 'logloss'
+            'eval_metric': 'mlogloss',
+            'objective': 'multi:softprob',
+            'num_class': 3  # cold, warm, hot
         }
-        pipeline = Pipeline([
+        return Pipeline([
             ('scaler', StandardScaler()),
             ('classifier', xgb.XGBClassifier(**xgb_params))
         ])
-        return pipeline
 
     def _create_pipeline(self, hyperparameters: Dict[str, Any]) -> Pipeline:
-        """Create pipeline based on model type."""
-        if self.model_type == "logistic_regression":
-            return self._create_logistic_regression_pipeline(hyperparameters)
-        elif self.model_type == "xgboost":
+        if self.model_type == "xgboost":
             return self._create_xgboost_pipeline(hyperparameters)
+        elif self.model_type == "logistic_regression":
+            # Use sklearn LogisticRegression for binary/multinomial
+            from sklearn.linear_model import LogisticRegression
+            lr_params = {
+                'C': hyperparameters.get('C', 1.0),
+                'penalty': hyperparameters.get('penalty', 'l2'),
+                'solver': hyperparameters.get('solver', 'lbfgs'),
+                'max_iter': hyperparameters.get('max_iter', 1000),
+                'random_state': 42,
+                'multi_class': 'multinomial'
+            }
+            return Pipeline([
+                ('scaler', StandardScaler()),
+                ('classifier', LogisticRegression(**lr_params))
+            ])
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
 
     async def train(
-        self, 
-        data_path: str, 
+        self,
+        data_path: str,
         hyperparameters: Dict[str, Any] = None,
         validation_split: float = 0.2,
         target_column: str = 'score'
     ) -> Dict[str, float]:
-        """Train the score prediction model."""
-        ml_logger.info(f"Starting score model training with {self.model_type}")
+        """Train multi-class model."""
+        ml_logger.info(f"Training {self.model_type} model...")
         hyperparameters = hyperparameters or {}
+        
         try:
             df = pd.read_csv(data_path)
             if target_column not in df.columns:
-                raise ValueError(f"Target column '{target_column}' not found in data")
-            y = df[target_column]
+                raise ValueError(f"Target column '{target_column}' not found")
+
+            y = df[target_column].astype(str)
             X = df.drop(columns=[target_column])
             self.feature_columns = X.columns.tolist()
-            categorical_columns = X.select_dtypes(include=['object']).columns
-            if len(categorical_columns) > 0:
-                X = pd.get_dummies(X, columns=categorical_columns, drop_first=True)
+
+            # One-hot encode categorical
+            categorical_cols = X.select_dtypes(include=['object', 'bool']).columns
+            if len(categorical_cols) > 0:
+                X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
                 self.feature_columns = X.columns.tolist()
-            score_threshold = hyperparameters.get('score_threshold', 0.5)
-            if y.dtype == 'object' or len(y.unique()) > 2:
-                if y.dtype in ['float64', 'int64'] and len(y.unique()) > 2:
-                    y = (y > score_threshold).astype(int)
+
+            # Label encode target
+            from sklearn.preprocessing import LabelEncoder
+            le = LabelEncoder()
+            y_encoded = le.fit_transform(y)
+
             X_train, X_val, y_train, y_val = train_test_split(
-                X, y, test_size=validation_split, random_state=42, stratify=y
+                X, y_encoded, test_size=validation_split, random_state=42, stratify=y_encoded
             )
+
             self.pipeline = self._create_pipeline(hyperparameters)
+
+            # Hyperparameter tuning
             if hyperparameters.get('tune_hyperparameters', False):
-                if self.model_type == "logistic_regression":
+                if self.model_type == "xgboost":
                     param_grid = {
-                        'classifier__C': [0.01, 0.1, 1.0, 10.0],
-                        'classifier__penalty': ['l1', 'l2'],
-                        'classifier__solver': ['liblinear', 'saga']
+                        'classifier__n_estimators': [100, 200],
+                        'classifier__max_depth': [4, 6],
+                        'classifier__learning_rate': [0.05, 0.1]
                     }
                 else:
                     param_grid = {
-                        'classifier__n_estimators': [50, 100, 200],
-                        'classifier__max_depth': [3, 6, 9],
-                        'classifier__learning_rate': [0.01, 0.1, 0.2]
+                        'classifier__C': [0.1, 1.0, 10.0],
+                        'classifier__penalty': ['l2'],
+                        'classifier__solver': ['lbfgs']
                     }
-                grid_search = GridSearchCV(
-                    self.pipeline, 
-                    param_grid, 
-                    cv=3, 
-                    scoring='roc_auc',
-                    n_jobs=-1
-                )
-                grid_search.fit(X_train, y_train)
-                self.pipeline = grid_search.best_estimator_
-                ml_logger.info(f"Best parameters: {grid_search.best_params_}")
+                grid = GridSearchCV(self.pipeline, param_grid, cv=3, scoring='f1_macro', n_jobs=-1)
+                grid.fit(X_train, y_train)
+                self.pipeline = grid.best_estimator_
+                ml_logger.info(f"Best params: {grid.best_params_}")
             else:
                 self.pipeline.fit(X_train, y_train)
+
+            # Evaluate
             y_pred = self.pipeline.predict(X_val)
-            y_pred_proba = self.pipeline.predict_proba(X_val)[:, 1]
+            y_proba = self.pipeline.predict_proba(X_val)
             metrics = {
-                'accuracy': accuracy_score(y_val, y_pred),
-                'precision': precision_score(y_val, y_pred, average='weighted'),
-                'recall': recall_score(y_val, y_pred, average='weighted'),
-                'f1_score': f1_score(y_val, y_pred, average='weighted'),
-                'roc_auc': roc_auc_score(y_val, y_pred_proba)
+                'accuracy': float(accuracy_score(y_val, y_pred)),
+                'precision': float(precision_score(y_val, y_pred, average='macro', zero_division=0)),
+                'recall': float(recall_score(y_val, y_pred, average='macro', zero_division=0)),
+                'f1_score': float(f1_score(y_val, y_pred, average='macro', zero_division=0)),
             }
+
+            # Save model
             model_data = {
                 'pipeline': self.pipeline,
+                'label_encoder': le,
                 'feature_columns': self.feature_columns
             }
             metadata = {
                 'model_type': f'score_predictor_{self.model_type}',
-                'algorithm': self.model_type.replace('_', ' ').title(),
+                'algorithm': 'XGBoost' if self.model_type == 'xgboost' else 'LogisticRegression',
                 'metrics': metrics,
-                'hyperparameters': hyperparameters,
-                'training_samples': len(X_train),
-                'validation_samples': len(X_val),
-                'num_features': len(self.feature_columns),
-                'feature_columns': self.feature_columns
+                'classes': le.classes_.tolist(),
+                'num_features': len(self.feature_columns)
             }
-            model_key = f"score_{self.model_type}"
-            model_registry.save_model(
-                model=model_data,
-                model_name=model_key,
-                metadata=metadata
-            )
-            ml_logger.info(f"Score model ({self.model_type}) training completed with AUC: {metrics['roc_auc']:.4f}")
+            model_key = "lead_scoring"  # Use same key as train_and_save_lead_score
+            model_registry.save_model(model_data, model_name=model_key, metadata=metadata)
+            ml_logger.info(f"Model trained and saved: {model_key} | F1: {metrics['f1_score']:.4f}")
             return metrics
+
         except Exception as e:
-            ml_logger.error(f"Score model training failed: {e}")
+            ml_logger.error(f"Training failed: {e}")
             raise
 
     async def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
-        """Predict score for input features."""
+        """Predict lead category with confidence."""
         self._load_model()
-        if not self.pipeline:
-            raise ValueError("Model not loaded. Please train or load a model first.")
+        if not self.pipeline or self.label_encoder is None:
+            raise ValueError("Model or label encoder not loaded.")
+
         try:
             df = self._prepare_features(features)
-            prediction = self.pipeline.predict(df)[0]
-            probabilities = self.pipeline.predict_proba(df)[0]
+            proba = self.pipeline.predict_proba(df)[0]
+            pred_idx = int(np.argmax(proba))
+            pred_class = self.label_encoder.inverse_transform([pred_idx])[0]
+            confidence = float(proba[pred_idx])
+
             result = {
-                'score': float(prediction),
-                'probability': float(probabilities[1] if len(probabilities) > 1 else probabilities[0]),
-                'probabilities': {
-                    'negative': float(probabilities[0]),
-                    'positive': float(probabilities[1] if len(probabilities) > 1 else 1 - probabilities[0])
+                "score": confidence,
+                "category": pred_class,
+                "confidence": confidence,
+                "probabilities": {
+                    "cold": float(proba[0]),
+                    "warm": float(proba[1]),
+                    "hot": float(proba[2])
                 }
             }
-            ml_logger.debug(f"Score prediction: {result}")
+            ml_logger.debug(f"Prediction: {result}")
             return result
         except Exception as e:
-            ml_logger.error(f"Score prediction failed: {e}")
+            ml_logger.error(f"Prediction failed: {e}")
             raise
 
     async def batch_predict(self, features_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Predict scores for multiple feature sets."""
-        if not self.pipeline:
-            raise ValueError("Model not loaded. Please train or load a model first.")
+        """Batch prediction."""
+        self._load_model()
+        if not self.pipeline or self.label_encoder is None:
+            raise ValueError("Model or label encoder not loaded.")
+
         try:
             df = pd.DataFrame(features_list)
             df = self._prepare_features(df)
-            predictions = self.pipeline.predict(df)
             probabilities = self.pipeline.predict_proba(df)
+            predictions = self.pipeline.predict(df)
+
             results = []
-            for i, (pred, probs) in enumerate(zip(predictions, probabilities)):
+            for i, (proba, pred_class) in enumerate(zip(probabilities, predictions)):
+                proba_dict = {self.label_encoder.classes_[j]: float(p) for j, p in enumerate(proba)}
+                confidence = float(proba.max())
                 result = {
-                    'features': features_list[i],
-                    'score': float(pred),
-                    'probability': float(probs[1] if len(probs) > 1 else probs[0]),
-                    'probabilities': {
-                        'negative': float(probs[0]),
-                        'positive': float(probs[1] if len(probs) > 1 else 1 - probs[0])
-                    }
+                    "features": features_list[i],
+                    "score": confidence,
+                    "category": pred_class,
+                    "confidence": confidence,
+                    "probabilities": proba_dict
                 }
                 results.append(result)
             return results
         except Exception as e:
-            ml_logger.error(f"Batch score prediction failed: {e}")
+            ml_logger.error(f"Batch prediction failed: {e}")
             raise
 
     def get_feature_importance(self) -> Dict[str, float]:
-        """Get feature importance from the trained model."""
+        """Return sorted feature importance."""
         if not self.pipeline or not self.feature_columns:
-            raise ValueError("Model not trained or loaded")
+            raise ValueError("Model not loaded")
         try:
-            classifier = self.pipeline.named_steps['classifier']
-            if hasattr(classifier, 'feature_importances_'):
-                importances = classifier.feature_importances_
-            elif hasattr(classifier, 'coef_'):
-                importances = np.abs(classifier.coef_[0])
+            clf = self.pipeline.named_steps['classifier']
+            if hasattr(clf, 'feature_importances_'):
+                importances = clf.feature_importances_
+            elif hasattr(clf, 'coef_'):
+                importances = np.abs(clf.coef_).mean(axis=0)
             else:
-                raise ValueError("Model does not support feature importance")
-            feature_importance = dict(zip(self.feature_columns, importances))
-            feature_importance = dict(
-                sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
-            )
-            return feature_importance
+                raise ValueError("No feature importance")
+            importance_dict = dict(zip(self.feature_columns, importances))
+            return dict(sorted(importance_dict.items(), key=lambda x: x[1], reverse=True))
         except Exception as e:
-            ml_logger.error(f"Failed to get feature importance: {e}")
+            ml_logger.error(f"Feature importance failed: {e}")
             raise

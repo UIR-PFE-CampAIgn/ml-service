@@ -114,6 +114,7 @@ def train_and_save_lead_score(
 
     # 2️⃣ Feature columns
     numeric_features = [
+        "messages_in_session",                  
         "conversation_duration_minutes",
         "user_response_time_avg_seconds",
     ]
@@ -153,8 +154,9 @@ def train_and_save_lead_score(
     from xgboost import XGBClassifier
 
     model = XGBClassifier(
-        objective="binary:logistic",
-        eval_metric="logloss",
+        objective="multi:softprob",   # MULTI-CLASS
+        num_class=3,
+        eval_metric="mlogloss",       # Use multi-class log loss
         use_label_encoder=False,
         n_estimators=200,
         learning_rate=0.1,
@@ -166,9 +168,9 @@ def train_and_save_lead_score(
 
     param_grid = {
         "features__text__ngram_range": [(1, 1), (1, 2)],
-        "clf__learning_rate": [0.05, 0.1, 0.2],
-        "clf__max_depth": [3, 5, 7],
-        "clf__n_estimators": [100, 200, 300],
+        "clf__learning_rate": [0.05, 0.1],
+        "clf__max_depth": [4, 6],
+        "clf__n_estimators": [200, 300],
     }
 
     # 7️⃣ Build pipeline

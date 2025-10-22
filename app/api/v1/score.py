@@ -73,26 +73,19 @@ async def predict_score(request: ScoreRequest):
     Predict lead qualification score.
     
     Returns:
-    - score >= 0.75: Hot lead 🔥
-    - score >= 0.50: Warm lead 🌤️
-    - score < 0.50: Cold lead ❄️
+    - score >= 0.75: Hot lead (fire)
+    - score >= 0.50: Warm lead (sun)
+    - score < 0.50: Cold lead (snowflake)
     """
     try:
         features = request.dict()
         result = await score_predictor.predict(features)
         
-        # Convert probability to score and determine category
-        probability = result['probability']
-        if probability >= 0.75:
-            category = "hot"
-        elif probability >= 0.50:
-            category = "warm"
-        else:
-            category = "cold"
-        
-        # Calculate confidence (using probability as confidence for now)
-        confidence = probability
-        
+        # NEW: Use 'score' from result (which is the max probability)
+        probability = result['score']  # This is the confidence of the predicted class
+        category = result['category']  # Already computed: 'cold', 'warm', 'hot'
+        confidence = result['confidence']
+
         ml_logger.info(f"Score: {category} ({probability:.3f})")
         
         return ScoreResponse(
@@ -106,8 +99,6 @@ async def predict_score(request: ScoreRequest):
     except Exception as e:
         ml_logger.error(f"Prediction error: {e}")
         raise HTTPException(status_code=500, detail="Prediction failed")
-
-
 @router.post("/train_score", response_model=TrainResponse)
 async def train_score(request: TrainRequest):
     """
