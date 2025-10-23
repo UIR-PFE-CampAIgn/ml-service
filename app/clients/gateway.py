@@ -94,3 +94,27 @@ class GatewayClient:
                 data = {"ok": True, "status_code": resp.status_code, "body": resp.text}
             return data
 
+    async def update_lead_score(self, lead_id: str, score: str) -> dict:
+        """Call  webhook /leads/score."""
+        url = f"{self.base_url}/leads/score"
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        payload = {"lead_id": lead_id, "score": score}
+
+        api_logger.info("Sending lead score update: %s -> %s", lead_id, score)
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                api_logger.exception("Error calling webhook: %s", e)
+                return {"ok": False, "status": resp.status_code, "error": str(e), "body": resp.text}
+
+            try:
+                return resp.json()
+            except Exception:
+                return {"ok": True, "status": resp.status_code, "body": resp.text}
