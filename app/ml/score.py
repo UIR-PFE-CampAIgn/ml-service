@@ -165,7 +165,6 @@ class ScorePredictor:
                         'classifier__learning_rate': [0.05, 0.1]
                     }
                 else:
-                else:
                     param_grid = {
                         'classifier__C': [0.1, 1.0, 10.0],
                         'classifier__penalty': ['l2'],

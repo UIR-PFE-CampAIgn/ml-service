@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional, AsyncGenerator, Tuple
-
+from app.ml.score import ScorePredictor
 from app.ml.intent import IntentPredictor
 from app.ml.rag.retrieval import retrieve, fill
 from huggingface_hub import hf_hub_download
@@ -25,7 +25,14 @@ class ChatRequest(BaseModel):
     temperature: float = Field(0.7, ge=0.0, le=2.0, description="LLM temperature")
     min_confidence: float = Field(0.4, ge=0.0, le=1.0, description="Confidence threshold for intent gating")
     chat_id: Optional[str] = Field(default=None, description="Optional chat identifier")
+    lead_id:Optional[str]=Field(default=None,description="lead identifier")
     timestamp: Optional[str] = Field(default=None, description="Optional ISO timestamp of the message")
+    messages_in_session: Optional[int] = Field(default=1, ge=1, description="Messages in current session")
+    conversation_duration_minutes: Optional[float] = Field(default=1.0, ge=0.0, description="Duration in minutes")
+    user_response_time_avg_seconds: Optional[float] = Field(default=60.0, ge=0.0, description="Avg response time")
+    user_initiated_conversation: Optional[bool] = Field(default=False, description="Did user start chat?")
+    is_returning_customer: Optional[bool] = Field(default=False, description="Is user returning?")
+    time_of_day: Optional[str] = Field(default="business_hours", description="business_hours/off_hours")
 
 
 # --- Optional local LLM via llama.cpp (GGUF) ----------------------------------------------------
@@ -101,6 +108,66 @@ def _format_context(snippets: List[Dict[str, Any]], limit: int) -> str:
     return "\n\n".join(parts)
 
 
+def _build_enhanced_prompt(
+    intent: str,
+    lead_category: str,
+    userQuery: str,
+    context_text: str
+) -> str:
+    """Build an enhanced, adaptive prompt based on intent and lead score."""
+    
+    # === INTENT-SPECIFIC INSTRUCTIONS ===
+    intent_templates = {
+        "greeting": "Respond warmly and professionally in 1-2 sentences.",
+        "question": "Answer directly with specific facts from context.",
+        "complaint": "Acknowledge empathetically and provide solution from context.",
+        "pricing": "State exact pricing from context with [#N] citations.",
+        "feature_inquiry": "List features from context with citations.",
+        "technical_support": "Provide step-by-step from context only.",
+    }
+    
+    # === LEAD-BASED PRIORITY & LENGTH ===
+    if lead_category == "hot":
+        priority_instruction = "HIGH-VALUE LEAD: Be helpful and thorough, but cite every claim."
+        max_tokens_guidance = "Maximum 4 sentences"
+    elif lead_category == "warm":
+        priority_instruction = "ENGAGED USER: Be informative with clear citations."
+        max_tokens_guidance = "Maximum 3 sentences"
+    else:
+        priority_instruction = "Be concise and cite sources."
+        max_tokens_guidance = "Maximum 2 sentences"
+    
+    intent_instruction = intent_templates.get(intent, "Answer factually from context only.")
+    
+    # === UNIFIED PROMPT WITH STRONGER CONSTRAINTS ===
+    prompt = (
+        f"You are a precise assistant that ONLY uses provided context.\n\n"
+        
+        f"=== CRITICAL RULES (VIOLATING = INCORRECT RESPONSE) ===\n"
+        f"1. Read CONTEXT below carefully\n"
+        f"2. Answer ONLY with facts from CONTEXT - add [#N] after each fact\n"
+        f"3. If information is NOT in CONTEXT, respond ONLY: 'I don't have that information. Let me connect you with our sales team.'\n"
+        f"4. NEVER add information from your training - CONTEXT ONLY\n"
+        f"5. LENGTH: {max_tokens_guidance} maximum\n"
+        f"6. Intent: {intent} - {intent_instruction}\n\n"
+        
+        f"=== CONTEXT (ONLY SOURCE) ===\n"
+        f"{context_text if context_text.strip() else '[EMPTY - Use rule 3]'}\n\n"
+        
+        f"=== EXAMPLE (correct citation) ===\n"
+        f"Q: Where is the company located?\n"
+        f"A: San Francisco, CA [#1]\n\n"
+        f"=== EXAMPLE (missing info) ===\n"
+        f"Q: What are shipping times?\n"
+        f"A: I don't have that information. Let me connect you with our sales team.\n\n"
+        
+        f"USER QUESTION: {userQuery}\n"
+        f"YOUR ANSWER:"
+    )
+    
+    return prompt
+
+
 class ChatChunk(BaseModel):
     event: str  # intent_info | token | complete | error
     content: str = ""
@@ -127,31 +194,32 @@ class ChatAnswerResponse(BaseModel):
     answer: str = ""
     model: Optional[str] = None
     confidence: Optional[float] = None
+    
 
 
 @router.post("/chat/answer", response_model=ChatAnswerResponse)
 async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
     """
-    Predict intent, retrieve relevant chunks, optionally call a local LLM, and send final answer.
-
-    Stream events:
-    - intent_info: includes intent, confidence, and top_predictions
-    - complete: includes final answer and marks end of stream
-    - error: emitted if any failure occurs
+    Predict intent, retrieve context, generate answer, 
+    AND compute lead score (cold/warm/hot).
     """
-
     userQuery = request.query
 
     try:
-        predictor = IntentPredictor()
-        pred = await predictor.predict(userQuery)
+        # === 1. INTENT PREDICTION ===
+        intent_predictor = IntentPredictor()
+        pred = await intent_predictor.predict(userQuery)
+        intent = pred.get("intent", "unknown")
+        intent_conf = float(pred.get("confidence", 0.0))
+        
         api_logger.info(
             "chat.intent: predicted intent=%s conf=%.3f chat_id=%s",
-            pred.get("intent"), float(pred.get("confidence", 0.0)), request.chat_id,
+            intent, intent_conf, request.chat_id,
         )
 
-        low_conf = float(pred.get("confidence", 0.0)) < request.min_confidence
+        low_conf = intent_conf < request.min_confidence
 
+        # === 2. RETRIEVAL ===
         api_logger.info("chat.retrieve: querying vectordb top_k=%d", request.context_limit)
         relevantData = retrieve(userQuery, top_k=request.context_limit)
         api_logger.info(
@@ -159,35 +227,65 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
             len(relevantData),
             (relevantData[0]["id"] if relevantData else None),
         )
-
         context_text = _format_context(relevantData, request.context_limit)
 
-        # Generate answer
-        answer: Optional[str] = None
+        # === 3. LEAD SCORING ===
+        score_result = {}
+        try:
+            # Extract behavioral features
+            score_features = {
+                "messages_in_session": request.messages_in_session or 1,
+                "user_msg": userQuery,
+                "conversation_duration_minutes": request.conversation_duration_minutes or 1.0,
+                "user_response_time_avg_seconds": request.user_response_time_avg_seconds or 60.0,
+                "user_initiated_conversation": request.user_initiated_conversation or False,
+                "is_returning_customer": request.is_returning_customer or False,
+                "time_of_day": request.time_of_day or "business_hours"
+            }
+
+            # Predict score
+            score_predictor = ScorePredictor(model_type="xgboost")
+            score_result = await score_predictor.predict(score_features)
+            
+            api_logger.info(
+                "chat.score: category=%s score=%.3f chat_id=%s",
+                score_result.get("category"), score_result.get("score"), request.chat_id
+            )
+             # ✅ Fire the webhook to NestJS
+            lead_id = request.lead_id
+            lead_category = score_result.get("category", "cold")
+            asyncio.create_task(gw.update_lead_score(lead_id, lead_category))
+
+        except Exception as e:
+            api_logger.warning("chat.score: failed: %s", e)
+            score_result = {"category": "unknown", "score": 0.0, "confidence": 0.0}
+
+        # === 4. LLM ANSWER WITH ENHANCED PROMPT ===
+        answer: str = ""
+        model_name: str = "unknown"
         engine, status = _get_llm_engine()
         api_logger.info("chat.llm: engine_status=%s", status)
-        if status == "llm_not_configured":
-            api_logger.warning(
-                "chat.llm: not configured; set LLM_GGUF_REPO and LLM_GGUF_FILENAME env vars"
-            )
-        elif status == "llama_cpp_unavailable":
-            api_logger.error(
-                "chat.llm: llama-cpp-python not installed or failed to import"
-            )
-        elif status == "llm_init_failed":
-            api_logger.error("chat.llm: initialization failed (download/init)")
+
         if engine and status == "ok":
-            prompt = (
-                "You are a helpful assistant. Use the provided context to answer the question.\n"
-                "If the answer is not in the context, say you don't know.\n\n"
-                f"Context:\n{context_text}\n\n"
-                f"Question: {userQuery}\nAnswer:"
+            # Build enhanced prompt with intent and lead awareness
+            lead_category = score_result.get("category", "cold")
+            prompt = _build_enhanced_prompt(
+                intent=intent,
+                lead_category=lead_category,
+                userQuery=userQuery,
+                context_text=context_text
             )
+            
+            api_logger.info(
+                "chat.llm: using enhanced prompt for intent=%s lead=%s",
+                intent, lead_category
+            )
+            
             try:
                 if hasattr(engine, "create_chat_completion"):
                     comp = engine.create_chat_completion(
                         messages=[
-                            {"role": "system", "content": "You are a concise assistant."},
+                            {"role": "system", "content": "You are an expert support assistant."},
                             {"role": "user", "content": prompt},
                         ],
                         temperature=float(request.temperature),
@@ -201,41 +299,41 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
                         max_tokens=512,
                     )
                     answer = comp["choices"][0]["text"].strip()
-                api_logger.info("chat.llm: generated %d chars of answer", len(answer))
+                api_logger.info("chat.llm: generated %d chars", len(answer))
             except Exception as e:
                 api_logger.exception("chat.llm: generation failed: %s", e)
-                answer = None
+                answer = "Sorry, I couldn't generate an answer."
 
-        if not answer:
-            answer = ""  # respond with empty string by default
-
-        # Schedule sending to external gateway (fire-and-forget)
+        # === 5. WEBHOOK (fire-and-forget) ===
         try:
             asyncio.create_task(
                 gw.send_chat_webhook(
-                    intent=str(pred.get("intent", "")),
-                    reply=answer or "",
+                    intent=intent,
+                    reply=answer,
                     chat_id=request.chat_id,
                     metadata={
                         "low_confidence": low_conf,
                         "retrieved_count": len(relevantData),
+
                     },
                 )
             )
-            api_logger.info("chat.gateway: webhook scheduled chat_id=%s", request.chat_id)
+            api_logger.info("chat.gateway: webhook scheduled")
         except Exception as e:
-            api_logger.exception("chat.gateway: scheduling failed: %s", e)
+            api_logger.exception("chat.gateway: failed: %s", e)
 
-        model_name = os.environ.get("LLM_GGUF_FILENAME") or os.environ.get("LLM_GGUF_REPO")
+        # === 6. RESPONSE ===
+        model_name = os.environ.get("LLM_GGUF_FILENAME") or os.environ.get("LLM_GGUF_REPO") or "local-llm"
+
         return ChatAnswerResponse(
-            answer=answer or "",
+            answer=answer,
             model=model_name,
-            confidence=float(pred.get("confidence", 0.0)),
+            confidence=intent_conf,
         )
 
     except Exception as e:
         api_logger.exception("chat.chat_answer: error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/feed_vector", response_model=FeedResponse)
