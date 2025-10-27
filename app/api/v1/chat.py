@@ -21,6 +21,7 @@ gw = GatewayClient()
 
 class ChatRequest(BaseModel):
     query: str = Field(..., description="User chat message/question")
+    business_id: str = Field(..., description="Business identifier to filter context")
     context_limit: int = Field(5, ge=1, le=20, description="Number of context chunks to retrieve")
     temperature: float = Field(0.7, ge=0.0, le=2.0, description="LLM temperature")
     min_confidence: float = Field(0.4, ge=0.0, le=1.0, description="Confidence threshold for intent gating")
@@ -181,6 +182,7 @@ class ChatChunk(BaseModel):
 
 class FeedRequest(BaseModel):
     content: str = Field(..., description="Text content to store in the vector DB")
+    business_id: str = Field(..., description="Business identifier to attach to the record")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional metadata for the content")
     id: Optional[str] = Field(default=None, description="Optional custom ID for the stored record")
 
@@ -221,7 +223,7 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
 
         # === 2. RETRIEVAL ===
         api_logger.info("chat.retrieve: querying vectordb top_k=%d", request.context_limit)
-        relevantData = retrieve(userQuery, top_k=request.context_limit)
+        relevantData = retrieve(userQuery, business_id=request.business_id, top_k=request.context_limit)
         api_logger.info(
             "chat.retrieve: got %d hits; first_id=%s",
             len(relevantData),
@@ -344,7 +346,7 @@ async def feed_vector(request: FeedRequest) -> FeedResponse:
     """
     try:
         api_logger.info("feed_vector: storing content len=%d", len(request.content or ""))
-        doc_id = fill(request.content, metadata=request.metadata, id=request.id)
+        doc_id = fill(request.content, business_id=request.business_id, metadata=request.metadata, id=request.id)
         api_logger.info("feed_vector: stored id=%s", doc_id)
         return FeedResponse(id=doc_id, status="stored")
     except Exception as e:

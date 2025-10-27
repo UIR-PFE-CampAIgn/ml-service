@@ -120,17 +120,34 @@ def _get_collection():
     return _collection
 
 
-def fill(data: str, *, metadata: Optional[Dict[str, Any]] = None, id: Optional[str] = None) -> str:
+def fill(
+    data: str,
+    *,
+    business_id: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    id: Optional[str] = None,
+) -> str:
     """Embed and store a single data chunk in the vector DB.
 
-    Stores a row with fields: {id, data (as document), embedding, metadata}.
+    Required metadata field: business_id (string). It is injected into the row's
+    metadata and enforced to match the provided value.
+
+    Stores a row with fields: {id, document=data, embedding, metadata}.
     Returns the stored id.
     """
     if not isinstance(data, str) or not data.strip():
         raise ValueError("data must be a non-empty string")
+    if not isinstance(business_id, str) or not business_id.strip():
+        raise ValueError("business_id must be a non-empty string")
 
     embedder = _get_embedder()
     collection = _get_collection()
+
+    # Prepare metadata and enforce business_id
+    meta: Dict[str, Any] = dict(metadata or {})
+    if "business_id" in meta and meta.get("business_id") != business_id:
+        raise ValueError("metadata.business_id does not match provided business_id")
+    meta["business_id"] = business_id
 
     vector = embedder.embed([data])[0]
     doc_id = id or f"doc-{uuid.uuid4()}"
@@ -139,26 +156,33 @@ def fill(data: str, *, metadata: Optional[Dict[str, Any]] = None, id: Optional[s
         ids=[doc_id],
         documents=[data],
         embeddings=[vector],
-        metadatas=[metadata or {}],
+        metadatas=[meta],
     )
     return doc_id
 
 
-def retrieve(query: str, *, top_k: int = 5) -> List[Dict[str, Any]]:
-    """Embed the query and return the top_k most similar rows.
+def retrieve(query: str, *, business_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    """Embed the query and return the top_k most similar rows for a business.
+
+    Required argument: business_id (string). Results are filtered by metadata.business_id.
 
     Similarity uses cosine distance via Chroma. Each result contains:
     {id, document, metadata, distance, similarity}
     """
     if not isinstance(query, str) or not query.strip():
         raise ValueError("query must be a non-empty string")
+    if not isinstance(business_id, str) or not business_id.strip():
+        raise ValueError("business_id must be a non-empty string")
 
     embedder = _get_embedder()
     collection = _get_collection()
 
     qvec = embedder.embed([query])[0]
     res = collection.query(
-        query_embeddings=[qvec], n_results=int(max(1, top_k)), include=["documents", "metadatas", "distances", "embeddings"]
+        query_embeddings=[qvec],
+        n_results=int(max(1, top_k)),
+        include=["documents", "metadatas", "distances", "embeddings"],
+        where={"business_id": business_id},
     )
 
     ids = res.get("ids", [[]])[0]
