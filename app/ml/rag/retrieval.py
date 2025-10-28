@@ -132,8 +132,9 @@ def fill(
     Required metadata field: business_id (string). It is injected into the row's
     metadata and enforced to match the provided value.
 
-    Stores a row with fields: {id, document=data, embedding, metadata}.
-    Returns the stored id.
+    If a row already exists with the same metadata.business_id, updates its
+    document, embedding, and (merged) metadata. Otherwise inserts a new row.
+    Returns the affected id.
     """
     if not isinstance(data, str) or not data.strip():
         raise ValueError("data must be a non-empty string")
@@ -150,14 +151,34 @@ def fill(
     meta["business_id"] = business_id
 
     vector = embedder.embed([data])[0]
-    doc_id = id or f"doc-{uuid.uuid4()}"
 
-    collection.add(
-        ids=[doc_id],
-        documents=[data],
-        embeddings=[vector],
-        metadatas=[meta],
-    )
+    # If a document already exists for this business_id, update it instead of inserting
+    try:
+        existing = collection.get(where={"business_id": business_id}, include=["metadatas"])  # type: ignore
+    except Exception:
+        existing = {"ids": [], "metadatas": []}
+
+    existing_ids: List[str] = list(existing.get("ids", []) or [])
+    if existing_ids:
+        # Update the first matching row for this business_id
+        target_id = existing_ids[0]
+        metas_list = existing.get("metadatas", []) or []
+        base_meta = metas_list[0] if len(metas_list) > 0 and isinstance(metas_list[0], dict) else {}
+        updated_meta: Dict[str, Any] = dict(base_meta)
+        updated_meta.update(meta)  # merge any new metadata (if provided)
+        updated_meta["business_id"] = business_id  # enforce correctness
+
+        collection.update(
+            ids=[target_id],
+            documents=[data],
+            embeddings=[vector],
+            metadatas=[updated_meta],
+        )
+        return target_id
+
+    # No existing row for this business_id: insert a new document
+    doc_id = id or f"doc-{uuid.uuid4()}"
+    collection.add(ids=[doc_id], documents=[data], embeddings=[vector], metadatas=[meta])
     return doc_id
 
 

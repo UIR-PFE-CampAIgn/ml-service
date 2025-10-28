@@ -142,30 +142,27 @@ def _build_enhanced_prompt(
     
     # === UNIFIED PROMPT WITH STRONGER CONSTRAINTS ===
     prompt = (
-        f"You are a precise assistant that ONLY uses provided context.\n\n"
-        
-        f"=== CRITICAL RULES (VIOLATING = INCORRECT RESPONSE) ===\n"
-        f"1. Read CONTEXT below carefully\n"
-        f"2. Answer ONLY with facts from CONTEXT - add [#N] after each fact\n"
-        f"3. If information is NOT in CONTEXT, respond ONLY: 'I don't have that information. Let me connect you with our sales team.'\n"
-        f"4. NEVER add information from your training - CONTEXT ONLY\n"
-        f"5. LENGTH: {max_tokens_guidance} maximum\n"
-        f"6. Intent: {intent} - {intent_instruction}\n\n"
-        
-        f"=== CONTEXT (ONLY SOURCE) ===\n"
-        f"{context_text if context_text.strip() else '[EMPTY - Use rule 3]'}\n\n"
-        
-        f"=== EXAMPLE (correct citation) ===\n"
-        f"Q: Where is the company located?\n"
-        f"A: San Francisco, CA [#1]\n\n"
-        f"=== EXAMPLE (missing info) ===\n"
-        f"Q: What are shipping times?\n"
-        f"A: I don't have that information. Let me connect you with our sales team.\n\n"
-        
+        "You are a precise assistant that ONLY uses the provided CONTEXT.\n\n"
+        "=== INSTRUCTIONS ===\n"
+        "1. Read the CONTEXT section below carefully.\n"
+        "2. Answer using ONLY facts from the CONTEXT — after each fact add [#N].\n"
+        "3. If the CONTEXT is empty or the answer cannot be found in it, respond exactly:\n"
+        "   \"I don’t have that information. Let me connect you with our sales team.\"\n"
+        "   (No extra words. No citations.)\n"
+        "4. Do NOT include any information from your training or external knowledge.\n"
+        f"5. LENGTH: maximum {max_tokens_guidance} tokens.\n"
+        f"6. Intent: {intent} — {intent_instruction}\n\n"
+        "=== CONTEXT (ONLY SOURCE) ===\n"
+        f"{context_text.strip()}\n\n"
+        "=== EXAMPLES (format only — DO NOT reuse example content) ===\n"
+        "Q: Where is the company located?\n"
+        "A: San Francisco, CA [#1]\n\n"
+        "Q: What are shipping times?\n"
+        "A: I don’t have that information. Let me connect you with our sales team.\n\n"
         f"USER QUESTION: {userQuery}\n"
-        f"YOUR ANSWER:"
+        "YOUR ANSWER:"
     )
-    
+
     return prompt
 
 
