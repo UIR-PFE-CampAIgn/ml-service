@@ -226,3 +226,42 @@ def retrieve(query: str, *, business_id: str, top_k: int = 5) -> List[Dict[str, 
         )
 
     return out
+
+
+def list_all(*, include_embeddings: bool = False) -> List[Dict[str, Any]]:
+    """Return every stored row in the collection."""
+    collection = _get_collection()
+    include_fields: List[str] = ["documents", "metadatas"]
+    if include_embeddings:
+        include_fields.append("embeddings")
+
+    res = collection.get(include=include_fields)  # type: ignore
+    ids = res.get("ids", [])
+    docs = res.get("documents", [])
+    metas = res.get("metadatas", [])
+    embeds = res.get("embeddings", []) if include_embeddings else []
+
+    out: List[Dict[str, Any]] = []
+    for i, doc_id in enumerate(ids):
+        item: Dict[str, Any] = {
+            "id": doc_id,
+            "document": docs[i] if i < len(docs) else None,
+            "metadata": metas[i] if i < len(metas) else None,
+        }
+        if include_embeddings and i < len(embeds):
+            item["embedding"] = embeds[i]
+        out.append(item)
+    return out
+
+def delete(business_id: str) -> bool:
+    """Delete vectorDB records for a specific biz
+    Required argument: business_id (string).
+    """
+    collection = _get_collection()
+
+    try:
+        collection.delete(where={"business_id": business_id})
+        return True
+    except Exception as e:
+        print('[vectodb] Deletion failed for business_id %s', business_id, e)
+        return False
