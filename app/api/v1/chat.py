@@ -2,10 +2,10 @@ import os
 import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional, AsyncGenerator, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 from app.ml.score import ScorePredictor
 from app.ml.intent import IntentPredictor
-from app.ml.rag.retrieval import retrieve, fill
+from app.ml.rag.retrieval import retrieve, fill, list_all, delete
 from huggingface_hub import hf_hub_download
 from app.core.logging import api_logger
 from app.clients.gateway import GatewayClient
@@ -183,11 +183,23 @@ class FeedRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional metadata for the content")
     id: Optional[str] = Field(default=None, description="Optional custom ID for the stored record")
 
+class FeedDeleteRequest(BaseModel):
+    business_id: str = Field(description="Business identifier to attach to the record")
+
+class FeedDeleteResponse(BaseModel):
+    ok: bool
+
 
 class FeedResponse(BaseModel):
     id: str
     status: str = "stored"
 
+
+class VectorRecord(BaseModel):
+    id: str
+    document: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    embedding: Optional[List[float]] = None
 
 class ChatAnswerResponse(BaseModel):
     answer: str = ""
@@ -349,3 +361,28 @@ async def feed_vector(request: FeedRequest) -> FeedResponse:
     except Exception as e:
         api_logger.exception("feed_vector: failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Vector feed failed: {e}")
+
+
+@router.get("/vector_records", response_model=List[VectorRecord])
+async def get_vector_records(include_embeddings: bool = False) -> List[VectorRecord]:
+    """Return every vector record stored in the collection."""
+    try:
+        records = list_all(include_embeddings=include_embeddings)
+        return [VectorRecord(**record) for record in records]
+    except Exception as e:
+        api_logger.exception("vector_records: failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Vector records retrieval failed: {e}")
+
+@router.delete("/feed_vector", response_model=FeedDeleteResponse)
+async def feed_vector(request: FeedDeleteRequest) -> FeedDeleteResponse:
+    """Delete biz record from the vector db.
+
+    Returns ok.
+    """
+    try:
+        api_logger.info("deleting biz records from vectorDB for the biz_id %s", request.business_id)
+        isDeleted = delete(request.business_id)
+        return FeedDeleteResponse(ok=isDeleted)
+    except Exception as e:
+        api_logger.exception("deleting biz records from vectorDB: failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"VectorDB record deletion failed: {e}")
