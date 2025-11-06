@@ -153,10 +153,11 @@ def fill(
     If an explicit id is provided and an existing record is found, updates its
     document, embedding, and metadata (after validating business ownership).
     When metadata includes a "field" string, the embedding text is augmented
-    with that field name ("field: data") so downstream retrieval can reason on
-    both the business_id and the structured field label.
-    Otherwise inserts a new row, allowing multiple records per business.
-    Returns the stored or updated id.
+    with that field name ("field\ndata") so downstream retrieval can reason on
+    both the business_id and the structured field label. If no id is provided
+    but a document already exists with the same business_id and field, that
+    record is updated in-place. Otherwise inserts a new row, allowing multiple
+    distinct fields per business. Returns the stored or updated id.
     """
     if not isinstance(data, str) or not data.strip():
         raise ValueError("data must be a non-empty string")
@@ -174,21 +175,23 @@ def fill(
 
     field_name = meta.get("field") if isinstance(meta, dict) else None
     embed_text = data
+    normalized_field: Optional[str] = None
     if isinstance(field_name, str) and field_name.strip():
         normalized_field = field_name.strip()
         meta["field"] = normalized_field
         embed_text = f"{normalized_field}\n{data}"
     else:
+        normalized_field = None
         meta.pop("field", None)
 
     vector = embedder.embed([embed_text])[0]
     document_text = embed_text
 
-    doc_id = id or f"doc-{uuid.uuid4()}"
+    doc_id = id
 
-    if id:
+    if doc_id:
         try:
-            existing = collection.get(ids=[id], include=["metadatas"])  # type: ignore
+            existing = collection.get(ids=[doc_id], include=["metadatas"])  # type: ignore
         except Exception:
             existing = {"ids": [], "metadatas": []}
 
@@ -207,13 +210,41 @@ def fill(
             updated_meta["business_id"] = business_id
 
             collection.update(
-                ids=[id],
+                ids=[doc_id],
                 documents=[document_text],
                 embeddings=[vector],
                 metadatas=[updated_meta],
             )
-            return id
+            return doc_id
 
+    if doc_id is None and normalized_field:
+        try:
+            existing = collection.get(  # type: ignore
+                where={"business_id": business_id, "field": normalized_field},
+                include=["metadatas"],
+            )
+        except Exception:
+            existing = {"ids": [], "metadatas": []}
+
+        existing_ids = list(existing.get("ids", []) or [])
+        if existing_ids:
+            doc_id = existing_ids[0]
+            metas_list = existing.get("metadatas", []) or []
+            base_meta = metas_list[0] if len(metas_list) > 0 and isinstance(metas_list[0], dict) else {}
+
+            updated_meta = dict(base_meta)
+            updated_meta.update(meta)
+            updated_meta["business_id"] = business_id
+
+            collection.update(
+                ids=[doc_id],
+                documents=[document_text],
+                embeddings=[vector],
+                metadatas=[updated_meta],
+            )
+            return doc_id
+
+    doc_id = doc_id or f"doc-{uuid.uuid4()}"
     collection.add(
         ids=[doc_id],
         documents=[document_text],
