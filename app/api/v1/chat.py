@@ -104,8 +104,18 @@ def _format_context(snippets: List[Dict[str, Any]], limit: int) -> str:
     for i in range(take):
         s = snippets[i]
         meta = s.get("metadata") if isinstance(s.get("metadata"), dict) else {}
+        field = meta.get("field")
         src = meta.get("source")
-        parts.append(f"[#{i+1}{' '+str(src) if src else ''}]\n{s.get('document','')}")
+
+        labels: List[str] = []
+        if field:
+            labels.append(f"field={field}")
+        if src:
+            labels.append(f"source={src}")
+
+        label_suffix = f" {' | '.join(labels)}" if labels else ""
+        header = f"[#{i+1}{label_suffix}]"
+        parts.append(f"{header}\n{s.get('document','')}")
     return "\n\n".join(parts)
 
 
@@ -139,7 +149,7 @@ def _build_enhanced_prompt(
         max_tokens_guidance = "Maximum 2 sentences"
     
     intent_instruction = intent_templates.get(intent, "Answer factually from context only.")
-    
+
     # === UNIFIED PROMPT WITH STRONGER CONSTRAINTS ===
     prompt = (
         "You are a precise assistant that ONLY uses the provided CONTEXT.\n\n"
@@ -177,11 +187,35 @@ class ChatChunk(BaseModel):
     chat_id: Optional[str] = None
 
 
+class FeedRecord(BaseModel):
+    field: str = Field(
+        ..., description="Name of the business data field (e.g., product1, contact)"
+    )
+    content: str = Field(
+        ..., description="Text content to store in the vector DB for this field"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional metadata specific to this record",
+    )
+    id: Optional[str] = Field(
+        default=None, description="Optional custom identifier for this record"
+    )
+
+
 class FeedRequest(BaseModel):
-    content: str = Field(..., description="Text content to store in the vector DB")
-    business_id: str = Field(..., description="Business identifier to attach to the record")
-    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional metadata for the content")
-    id: Optional[str] = Field(default=None, description="Optional custom ID for the stored record")
+    business_id: str = Field(
+        ..., description="Business identifier to attach to the record(s)"
+    )
+    records: List[FeedRecord] = Field(
+        ...,
+        min_length=1,
+        description="List of business data records to store in the vector DB",
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional metadata applied to every record submitted",
+    )
 
 class FeedDeleteRequest(BaseModel):
     business_id: str = Field(description="Business identifier to attach to the record")
@@ -191,8 +225,15 @@ class FeedDeleteResponse(BaseModel):
 
 
 class FeedResponse(BaseModel):
-    id: str
     status: str = "stored"
+    id: Optional[str] = Field(
+        default=None,
+        description="ID of the stored record when a single item is submitted",
+    )
+    ids: List[str] = Field(
+        default_factory=list,
+        description="IDs of all stored or updated records",
+    )
 
 
 class VectorRecord(BaseModel):
@@ -232,13 +273,23 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
 
         # === 2. RETRIEVAL ===
         api_logger.info("chat.retrieve: querying vectordb top_k=%d", request.context_limit)
-        relevantData = retrieve(userQuery, business_id=request.business_id, top_k=request.context_limit)
+
+        relevantData = retrieve(
+            userQuery,
+            business_id=request.business_id,
+            top_k=max(1, request.context_limit),
+        )
         api_logger.info(
             "chat.retrieve: got %d hits; first_id=%s",
             len(relevantData),
             (relevantData[0]["id"] if relevantData else None),
         )
-        context_text = _format_context(relevantData, request.context_limit)
+
+        # Only keep the top-most hit to avoid leaking unrelated business data
+        if len(relevantData) > 1:
+            relevantData = relevantData[:1]
+
+        context_text = _format_context(relevantData, len(relevantData))
 
         # === 3. LEAD SCORING ===
         score_result = {}
@@ -288,8 +339,8 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
             )
             
             api_logger.info(
-                "chat.llm: using enhanced prompt for intent=%s lead=%s",
-                intent, lead_category
+                "chat.llm: using enhanced prompt for intent=%s lead=%s, prompt=%s",
+                intent, lead_category, prompt
             )
             
             try:
@@ -349,15 +400,39 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
 
 @router.post("/feed_vector", response_model=FeedResponse)
 async def feed_vector(request: FeedRequest) -> FeedResponse:
-    """Embed and store a single text in the vector database.
+    """Embed and store one or more texts in the vector database.
 
-    Returns the stored document ID and status.
+    Returns the stored document ID(s) and status.
     """
     try:
-        api_logger.info("feed_vector: storing content len=%d", len(request.content or ""))
-        doc_id = fill(request.content, business_id=request.business_id, metadata=request.metadata, id=request.id)
-        api_logger.info("feed_vector: stored id=%s", doc_id)
-        return FeedResponse(id=doc_id, status="stored")
+        stored_ids: List[str] = []
+
+        api_logger.info(
+            "feed_vector: storing %d records for business_id=%s",
+            len(request.records),
+            request.business_id,
+        )
+
+        base_meta = dict(request.metadata or {})
+        for record in request.records:
+            record_meta = dict(base_meta)
+            if record.metadata:
+                record_meta.update(record.metadata)
+            record_meta.setdefault("field", record.field)
+            # ensure the field identifier is always present
+            record_meta["field"] = record.field
+
+            doc_id = fill(
+                record.content,
+                business_id=request.business_id,
+                metadata=record_meta,
+                id=record.id,
+            )
+            stored_ids.append(doc_id)
+
+        api_logger.info("feed_vector: stored ids=%s", stored_ids)
+        primary_id = stored_ids[0] if len(stored_ids) == 1 else None
+        return FeedResponse(status="stored", id=primary_id, ids=stored_ids)
     except Exception as e:
         api_logger.exception("feed_vector: failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Vector feed failed: {e}")
