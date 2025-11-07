@@ -4,6 +4,10 @@ from typing import Any, Dict, List, Optional
 
 from huggingface_hub import hf_hub_download
 from chromadb import PersistentClient
+try:  # chromadb <0.5 exposes HttpClient for remote servers
+    from chromadb import HttpClient
+except ImportError:  # Fallback if HttpClient unavailable
+    HttpClient = None  # type: ignore
 
 
 try:
@@ -24,6 +28,9 @@ HF_CACHE = os.environ.get("HF_HOME", "/app/models")
 
 VECTOR_DB_PATH = os.environ.get("VECTOR_DB_PATH", "/app/data/vectordb")
 COLLECTION_NAME = os.environ.get("RAG_COLLECTION", "documents")
+CHROMA_SERVER_HOST = os.environ.get("CHROMA_SERVER_HOST")
+CHROMA_SERVER_PORT = int(os.environ.get("CHROMA_SERVER_PORT", "8000"))
+CHROMA_SERVER_SSL = os.environ.get("CHROMA_SERVER_SSL", "false").lower() in {"1", "true", "yes"}
 
 
 class GGUFEmbedder:
@@ -95,7 +102,7 @@ class GGUFEmbedder:
 
 
 _embedder: Optional[GGUFEmbedder] = None
-_client: Optional[PersistentClient] = None
+_client: Optional[Any] = None
 _collection = None
 
 
@@ -109,8 +116,19 @@ def _get_embedder() -> GGUFEmbedder:
 def _get_collection():
     global _client, _collection
     if _client is None:
-        os.makedirs(VECTOR_DB_PATH, exist_ok=True)
-        _client = PersistentClient(path=VECTOR_DB_PATH)
+        if CHROMA_SERVER_HOST:
+            if HttpClient is None:
+                raise RuntimeError(
+                    "chromadb.HttpClient not available; ensure chromadb>=0.4.22 is installed"
+                )
+            _client = HttpClient(
+                host=CHROMA_SERVER_HOST,
+                port=CHROMA_SERVER_PORT,
+                ssl=CHROMA_SERVER_SSL,
+            )
+        else:
+            os.makedirs(VECTOR_DB_PATH, exist_ok=True)
+            _client = PersistentClient(path=VECTOR_DB_PATH)
     if _collection is None:
         # Use cosine space for standard text embeddings
         _collection = _client.get_or_create_collection(
@@ -132,9 +150,14 @@ def fill(
     Required metadata field: business_id (string). It is injected into the row's
     metadata and enforced to match the provided value.
 
-    If a row already exists with the same metadata.business_id, updates its
-    document, embedding, and (merged) metadata. Otherwise inserts a new row.
-    Returns the affected id.
+    If an explicit id is provided and an existing record is found, updates its
+    document, embedding, and metadata (after validating business ownership).
+    When metadata includes a "field" string, the embedding text is augmented
+    with that field name ("field\ndata") so downstream retrieval can reason on
+    both the business_id and the structured field label. If no id is provided
+    but a document already exists with the same business_id and field, that
+    record is updated in-place. Otherwise inserts a new row, allowing multiple
+    distinct fields per business. Returns the stored or updated id.
     """
     if not isinstance(data, str) or not data.strip():
         raise ValueError("data must be a non-empty string")
@@ -150,42 +173,98 @@ def fill(
         raise ValueError("metadata.business_id does not match provided business_id")
     meta["business_id"] = business_id
 
-    vector = embedder.embed([data])[0]
+    field_name = meta.get("field") if isinstance(meta, dict) else None
+    embed_text = data
+    normalized_field: Optional[str] = None
+    if isinstance(field_name, str) and field_name.strip():
+        normalized_field = field_name.strip()
+        meta["field"] = normalized_field
+        embed_text = f"{normalized_field}\n{data}"
+    else:
+        normalized_field = None
+        meta.pop("field", None)
 
-    # If a document already exists for this business_id, update it instead of inserting
-    try:
-        existing = collection.get(where={"business_id": business_id}, include=["metadatas"])  # type: ignore
-    except Exception:
-        existing = {"ids": [], "metadatas": []}
+    vector = embedder.embed([embed_text])[0]
+    document_text = embed_text
 
-    existing_ids: List[str] = list(existing.get("ids", []) or [])
-    if existing_ids:
-        # Update the first matching row for this business_id
-        target_id = existing_ids[0]
-        metas_list = existing.get("metadatas", []) or []
-        base_meta = metas_list[0] if len(metas_list) > 0 and isinstance(metas_list[0], dict) else {}
-        updated_meta: Dict[str, Any] = dict(base_meta)
-        updated_meta.update(meta)  # merge any new metadata (if provided)
-        updated_meta["business_id"] = business_id  # enforce correctness
+    doc_id = id
 
-        collection.update(
-            ids=[target_id],
-            documents=[data],
-            embeddings=[vector],
-            metadatas=[updated_meta],
-        )
-        return target_id
+    if doc_id:
+        try:
+            existing = collection.get(ids=[doc_id], include=["metadatas"])  # type: ignore
+        except Exception:
+            existing = {"ids": [], "metadatas": []}
 
-    # No existing row for this business_id: insert a new document
-    doc_id = id or f"doc-{uuid.uuid4()}"
-    collection.add(ids=[doc_id], documents=[data], embeddings=[vector], metadatas=[meta])
+        existing_ids: List[str] = list(existing.get("ids", []) or [])
+        if existing_ids:
+            metas_list = existing.get("metadatas", []) or []
+            base_meta = metas_list[0] if len(metas_list) > 0 and isinstance(metas_list[0], dict) else {}
+            existing_business_id = base_meta.get("business_id") if isinstance(base_meta, dict) else None
+            if existing_business_id and existing_business_id != business_id:
+                raise ValueError(
+                    "existing record business_id does not match provided business_id"
+                )
+
+            updated_meta: Dict[str, Any] = dict(base_meta)
+            updated_meta.update(meta)
+            updated_meta["business_id"] = business_id
+
+            collection.update(
+                ids=[doc_id],
+                documents=[document_text],
+                embeddings=[vector],
+                metadatas=[updated_meta],
+            )
+            return doc_id
+
+    if doc_id is None and normalized_field:
+        try:
+            existing = collection.get(  # type: ignore
+                where={"business_id": business_id, "field": normalized_field},
+                include=["metadatas"],
+            )
+        except Exception:
+            existing = {"ids": [], "metadatas": []}
+
+        existing_ids = list(existing.get("ids", []) or [])
+        if existing_ids:
+            doc_id = existing_ids[0]
+            metas_list = existing.get("metadatas", []) or []
+            base_meta = metas_list[0] if len(metas_list) > 0 and isinstance(metas_list[0], dict) else {}
+
+            updated_meta = dict(base_meta)
+            updated_meta.update(meta)
+            updated_meta["business_id"] = business_id
+
+            collection.update(
+                ids=[doc_id],
+                documents=[document_text],
+                embeddings=[vector],
+                metadatas=[updated_meta],
+            )
+            return doc_id
+
+    doc_id = doc_id or f"doc-{uuid.uuid4()}"
+    collection.add(
+        ids=[doc_id],
+        documents=[document_text],
+        embeddings=[vector],
+        metadatas=[meta],
+    )
     return doc_id
 
 
-def retrieve(query: str, *, business_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
+def retrieve(
+    query: str,
+    *,
+    business_id: str,
+    top_k: int = 5,
+    fields: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     """Embed the query and return the top_k most similar rows for a business.
 
     Required argument: business_id (string). Results are filtered by metadata.business_id.
+    Optional fields list allows further filtering by metadata.field values.
 
     Similarity uses cosine distance via Chroma. Each result contains:
     {id, document, metadata, distance, similarity}
@@ -199,11 +278,34 @@ def retrieve(query: str, *, business_id: str, top_k: int = 5) -> List[Dict[str, 
     collection = _get_collection()
 
     qvec = embedder.embed([query])[0]
+    where: Dict[str, Any]
+    base_filter: Dict[str, Any] = {"business_id": business_id}
+    field_filter: Optional[Any] = None
+    if fields:
+        normalized_fields = []
+        seen: set[str] = set()
+        for f in fields:
+            if isinstance(f, str):
+                stripped = f.strip()
+                if stripped and stripped not in seen:
+                    normalized_fields.append(stripped)
+                    seen.add(stripped)
+        if normalized_fields:
+            if len(normalized_fields) == 1:
+                field_filter = {"field": normalized_fields[0]}
+            else:
+                field_filter = {"field": {"$in": normalized_fields}}
+
+    if field_filter:
+        where = {"$and": [base_filter, field_filter]}
+    else:
+        where = base_filter
+
     res = collection.query(
         query_embeddings=[qvec],
         n_results=int(max(1, top_k)),
         include=["documents", "metadatas", "distances", "embeddings"],
-        where={"business_id": business_id},
+        where=where,
     )
 
     ids = res.get("ids", [[]])[0]
@@ -252,6 +354,42 @@ def list_all(*, include_embeddings: bool = False) -> List[Dict[str, Any]]:
             item["embedding"] = embeds[i]
         out.append(item)
     return out
+
+
+def list_business_records(
+    business_id: str, *, include_embeddings: bool = False
+) -> List[Dict[str, Any]]:
+    """Return all vector rows for a specific business."""
+    if not isinstance(business_id, str) or not business_id.strip():
+        raise ValueError("business_id must be a non-empty string")
+
+    collection = _get_collection()
+    include_fields: List[str] = ["documents", "metadatas"]
+    if include_embeddings:
+        include_fields.append("embeddings")
+
+    res = collection.get(  # type: ignore
+        where={"business_id": business_id},
+        include=include_fields,
+    )
+
+    ids = res.get("ids", [])
+    docs = res.get("documents", [])
+    metas = res.get("metadatas", [])
+    embeds = res.get("embeddings", []) if include_embeddings else []
+
+    out: List[Dict[str, Any]] = []
+    for i, doc_id in enumerate(ids):
+        item: Dict[str, Any] = {
+            "id": doc_id,
+            "document": docs[i] if i < len(docs) else None,
+            "metadata": metas[i] if i < len(metas) else None,
+        }
+        if include_embeddings and i < len(embeds):
+            item["embedding"] = embeds[i]
+        out.append(item)
+    return out
+
 
 def delete(business_id: str) -> bool:
     """Delete vectorDB records for a specific biz

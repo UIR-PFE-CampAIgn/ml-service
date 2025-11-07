@@ -21,6 +21,8 @@ services:
       - AWS_SECRET_ACCESS_KEY=minioadmin
       # Chroma/telemetry
       - ANONYMIZED_TELEMETRY=false
+      - CHROMA_SERVER_HOST=vectordb
+      - CHROMA_SERVER_PORT=8000
       - VECTOR_DB_PATH=/app/data/vectordb
       - RAG_COLLECTION=documents
       # Hugging Face cache
@@ -40,11 +42,26 @@ services:
       - ./logs:/app/logs
       - ./models:/app/models
     depends_on:
+      - vectordb
       - minio
     networks:
       - ml-network
     restart: unless-stopped
     extra_hosts: ["host.docker.internal:host-gateway"]
+
+  # Chroma vector database (HTTP server)
+  vectordb:
+    build:
+      context: ./docker/vectordb
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+    ports:
+      - "8001:8000"
+    volumes:
+      - vectordb_data:/chroma/data
+    networks:
+      - ml-network
+    restart: unless-stopped
 
   # MinIO (S3-compatible storage)
   minio:
@@ -84,4 +101,6 @@ networks:
 
 volumes:
   minio_data:
+    driver: local
+  vectordb_data:
     driver: local
