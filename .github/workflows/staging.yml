@@ -1,0 +1,136 @@
+name: "Staging : ML Service"
+
+on:
+    push:
+        branches: [feature/devops]
+
+env:
+    REGISTRY: ghcr.io
+    ORG: UIR-PFE-CampAIgn
+    SONAR_HOST_URL: https://sonarcloud.io
+    # Allow temporarily bypassing Sonar when SKIP_SONAR repo variable is set to "true"
+    SKIP_SONAR: true
+    PYTHON_VERSION: "3.11"
+
+concurrency:
+    group: staging-${{ github.repository }}
+    cancel-in-progress: true
+
+jobs:
+    test_and_sonar:
+        runs-on: ubuntu-latest
+        
+        services:
+            redis:
+                image: redis:7
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0  # Shallow clones should be disabled for better SonarCloud analysis
+
+            - uses: actions/setup-python@v4
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/pip
+                  key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pip-
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt
+                  pip install pytest pytest-cov flake8 black isort
+
+            - name: Code quality checks
+              run: |
+                  black --check app/
+                  isort --check-only app/
+                  flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+            - name: Create test directories
+              run: |
+                  mkdir -p logs data/vectordb models
+
+            - name: Run tests with coverage
+              run: |
+                  pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
+              env:
+                  DEBUG: true
+                  LOG_LEVEL: ERROR
+                  MODEL_STORAGE_TYPE: local
+                  VECTOR_DB_PATH: ./data/vectordb
+                  LLM_PROVIDER: mock
+
+            - name: SonarCloud Scan
+              if: env.SKIP_SONAR != 'true'
+              uses: SonarSource/sonarcloud-github-action@v2
+              env:
+                  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+              with:
+                  args: >
+                      -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+                      -Dsonar.organization=${{ secrets.SONAR_ORG }}
+                      -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
+                      -Dsonar.python.coverage.reportPaths=coverage.xml
+                      -Dsonar.sources=app
+                      -Dsonar.tests=tests
+                      -Dsonar.qualitygate.wait=true
+
+    build_and_deploy:
+        needs: test_and_sonar
+        runs-on: ubuntu-latest
+        permissions: { contents: read, packages: write }
+        steps:
+            - uses: actions/checkout@v4
+            - uses: docker/setup-buildx-action@v3
+
+            - name: Login to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Compute image tags
+              id: vars
+              run: |
+                  REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+                  echo "image=ghcr.io/${REPO_LOWER}" >> $GITHUB_OUTPUT
+                  echo "sha_short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+            - name: Build & Push
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  push: true
+                  tags: |
+                      ${{ steps.vars.outputs.image }}:develop
+                      ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.sha_short }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            - name: Deploy ML Service (targeted)
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                  host: ${{ secrets.STAGING_HOST }}
+                  username: ${{ secrets.STAGING_USER }}
+                  key: ${{ secrets.STAGING_SSH_KEY }}
+                  script_stop: true
+                  command_timeout: 30m
+                  script: |
+                      set -euo pipefail
+                      cd /opt/campaign-staging/stack
+                      echo "ML_SERVICE_TAG=${{ steps.vars.outputs.sha_short }}" | sudo tee .deploy_tags_ml >/dev/null
+                      ./deploy.sh ml-service
