@@ -509,6 +509,3 @@ async def feed_vector(request: FeedDeleteRequest) -> FeedDeleteResponse:
         raise HTTPException(
             status_code=500, detail=f"VectorDB record deletion failed: {e}"
         )
-
-
-

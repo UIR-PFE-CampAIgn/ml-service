@@ -424,5 +424,3 @@ def delete(business_id: str) -> bool:
     except Exception as e:
         print("[vectodb] Deletion failed for business_id %s", business_id, e)
         return False
-
-
