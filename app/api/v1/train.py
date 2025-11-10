@@ -1,8 +1,9 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional, Tuple
 import uuid
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel, Field
 
 from app.ml.intent import IntentPredictor
 from app.ml.score import ScorePredictor

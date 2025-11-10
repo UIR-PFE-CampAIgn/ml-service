@@ -1,10 +1,11 @@
 # test_predict_api_ultra.py
-import requests
-from tabulate import tabulate
 import random
 import string
 from datetime import datetime
+
 import numpy as np
+import requests
+from tabulate import tabulate
 
 API_URL = "http://localhost:8000/api/v1/ml/v1/predict_score"
 

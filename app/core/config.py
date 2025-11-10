@@ -1,7 +1,8 @@
-from pydantic import Field
-from typing import Optional
-from pydantic_settings import BaseSettings
 import os
+from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):

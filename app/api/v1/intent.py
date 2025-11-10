@@ -1,6 +1,7 @@
+from typing import Any, Dict
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import Dict, Any
 
 from app.ml.intent import IntentPredictor
 from app.schemas import IntentPredictionRequest, IntentPredictionResponse

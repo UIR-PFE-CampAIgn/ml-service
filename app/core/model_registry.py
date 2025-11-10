@@ -1,12 +1,13 @@
-import boto3
-import joblib
+import logging
+import os
 import pickle
 import tempfile
-import os
-from typing import Any, Optional, Dict
-from pathlib import Path
-import logging
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import boto3
+import joblib
 
 from app.core.config import settings
 

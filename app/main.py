@@ -1,13 +1,14 @@
+from contextlib import asynccontextmanager
+from datetime import datetime
+
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from contextlib import asynccontextmanager
-import uvicorn
-from datetime import datetime
 
+from app.api.v1 import chat, intent, score, train
 from app.core.config import settings
-from app.core.logging import setup_logging, app_logger
-from app.api.v1 import intent, score, train, chat
+from app.core.logging import app_logger, setup_logging
 from app.schemas import HealthResponse
 
 

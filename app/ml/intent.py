@@ -1,18 +1,20 @@
-import pandas as pd
-import numpy as np
-from typing import Dict, Any, List, Tuple, Optional
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.svm import SVC
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
-import joblib
 import asyncio
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import joblib
+import numpy as np
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import (accuracy_score, classification_report,
+                             confusion_matrix)
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.svm import SVC
 
 from app.core.config import settings
-from app.core.model_registry import model_registry
 from app.core.logging import ml_logger
+from app.core.model_registry import model_registry
 
 
 class IntentPredictor:

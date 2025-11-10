@@ -2,10 +2,12 @@
 Score webhook for sending lead scores to external endpoints.
 """
 
-import os
 import asyncio
+import os
+from typing import Any, Dict
+
 import httpx
-from typing import Dict, Any
+
 from app.core.logging import ml_logger
 
 

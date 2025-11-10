@@ -1,8 +1,8 @@
 import logging
 import logging.config
 import sys
-from typing import Dict, Any
 from pathlib import Path
+from typing import Any, Dict
 
 from app.core.config import settings
 

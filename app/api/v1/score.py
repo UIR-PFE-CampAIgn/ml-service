@@ -1,9 +1,11 @@
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional
-from app.ml.train_score import train_and_save_lead_score
-from app.ml.score import ScorePredictor
+
 from app.core.logging import ml_logger
+from app.ml.score import ScorePredictor
+from app.ml.train_score import train_and_save_lead_score
 
 # Initialize score predictor
 score_predictor = ScorePredictor()

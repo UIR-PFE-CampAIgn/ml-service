@@ -1,14 +1,16 @@
-import os
 import asyncio
+import os
+from typing import Any, Dict, List, Optional, Tuple
+
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional, Tuple
-from app.ml.score import ScorePredictor
-from app.ml.intent import IntentPredictor
-from app.ml.rag.retrieval import retrieve, fill, list_all, delete
 from huggingface_hub import hf_hub_download
-from app.core.logging import api_logger
+from pydantic import BaseModel, Field
+
 from app.clients.gateway import GatewayClient
+from app.core.logging import api_logger
+from app.ml.intent import IntentPredictor
+from app.ml.rag.retrieval import delete, fill, list_all, retrieve
+from app.ml.score import ScorePredictor
 
 try:
     from llama_cpp import Llama  # optional local GGUF generator

@@ -2,8 +2,8 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
-from huggingface_hub import hf_hub_download
 from chromadb import PersistentClient
+from huggingface_hub import hf_hub_download
 
 try:  # chromadb <0.5 exposes HttpClient for remote servers
     from chromadb import HttpClient
