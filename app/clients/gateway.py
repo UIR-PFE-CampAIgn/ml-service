@@ -22,7 +22,9 @@ def _build_webhook_url() -> str:
         base = settings.gateway_base_url.rstrip("/")
         path = (settings.gateway_webhook_path or "/webhooks/chat").lstrip("/")
         return f"{base}/{path}"
-    raise ValueError("Gateway URL is not configured. Set GATEWAY_WEBHOOK_URL or GATEWAY_BASE_URL.")
+    raise ValueError(
+        "Gateway URL is not configured. Set GATEWAY_WEBHOOK_URL or GATEWAY_BASE_URL."
+    )
 
 
 class GatewayClient:
@@ -112,7 +114,12 @@ class GatewayClient:
                 resp.raise_for_status()
             except httpx.HTTPStatusError as e:
                 api_logger.exception("Error calling webhook: %s", e)
-                return {"ok": False, "status": resp.status_code, "error": str(e), "body": resp.text}
+                return {
+                    "ok": False,
+                    "status": resp.status_code,
+                    "error": str(e),
+                    "body": resp.text,
+                }
 
             try:
                 return resp.json()

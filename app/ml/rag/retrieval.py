@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from huggingface_hub import hf_hub_download
 from chromadb import PersistentClient
+
 try:  # chromadb <0.5 exposes HttpClient for remote servers
     from chromadb import HttpClient
 except ImportError:  # Fallback if HttpClient unavailable
@@ -17,20 +18,20 @@ except Exception as _e:  # Defer import errors until runtime usage
 
 
 # Defaults can be overridden via environment variables
-HF_REPO_ID = os.environ.get(
-    "BGE_GGUF_REPO", "CompendiumLabs/bge-base-en-v1.5-gguf"
-)
+HF_REPO_ID = os.environ.get("BGE_GGUF_REPO", "CompendiumLabs/bge-base-en-v1.5-gguf")
 # Pick a common quant filename by default; can be changed via env
-HF_FILENAME = os.environ.get(
-    "BGE_GGUF_FILENAME", "bge-base-en-v1.5-q8_0.gguf"
-)
+HF_FILENAME = os.environ.get("BGE_GGUF_FILENAME", "bge-base-en-v1.5-q8_0.gguf")
 HF_CACHE = os.environ.get("HF_HOME", "/app/models")
 
 VECTOR_DB_PATH = os.environ.get("VECTOR_DB_PATH", "/app/data/vectordb")
 COLLECTION_NAME = os.environ.get("RAG_COLLECTION", "documents")
 CHROMA_SERVER_HOST = os.environ.get("CHROMA_SERVER_HOST")
 CHROMA_SERVER_PORT = int(os.environ.get("CHROMA_SERVER_PORT", "8000"))
-CHROMA_SERVER_SSL = os.environ.get("CHROMA_SERVER_SSL", "false").lower() in {"1", "true", "yes"}
+CHROMA_SERVER_SSL = os.environ.get("CHROMA_SERVER_SSL", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 class GGUFEmbedder:
@@ -68,7 +69,9 @@ class GGUFEmbedder:
         if hasattr(self.engine, "create_embedding"):
             try:
                 res = self.engine.create_embedding(input=texts)  # type: ignore
-                data = res["data"] if isinstance(res, dict) else getattr(res, "data", [])
+                data = (
+                    res["data"] if isinstance(res, dict) else getattr(res, "data", [])
+                )
                 if data:
                     return [row["embedding"] for row in data]
             except Exception:
@@ -81,7 +84,11 @@ class GGUFEmbedder:
             if hasattr(self.engine, "create_embedding"):
                 try:
                     res = self.engine.create_embedding(input=[t])  # type: ignore
-                    data = res["data"] if isinstance(res, dict) else getattr(res, "data", [])
+                    data = (
+                        res["data"]
+                        if isinstance(res, dict)
+                        else getattr(res, "data", [])
+                    )
                     if data:
                         vector = data[0]["embedding"]
                 except Exception:
@@ -198,8 +205,14 @@ def fill(
         existing_ids: List[str] = list(existing.get("ids", []) or [])
         if existing_ids:
             metas_list = existing.get("metadatas", []) or []
-            base_meta = metas_list[0] if len(metas_list) > 0 and isinstance(metas_list[0], dict) else {}
-            existing_business_id = base_meta.get("business_id") if isinstance(base_meta, dict) else None
+            base_meta = (
+                metas_list[0]
+                if len(metas_list) > 0 and isinstance(metas_list[0], dict)
+                else {}
+            )
+            existing_business_id = (
+                base_meta.get("business_id") if isinstance(base_meta, dict) else None
+            )
             if existing_business_id and existing_business_id != business_id:
                 raise ValueError(
                     "existing record business_id does not match provided business_id"
@@ -230,7 +243,11 @@ def fill(
         if existing_ids:
             doc_id = existing_ids[0]
             metas_list = existing.get("metadatas", []) or []
-            base_meta = metas_list[0] if len(metas_list) > 0 and isinstance(metas_list[0], dict) else {}
+            base_meta = (
+                metas_list[0]
+                if len(metas_list) > 0 and isinstance(metas_list[0], dict)
+                else {}
+            )
 
             updated_meta = dict(base_meta)
             updated_meta.update(meta)
@@ -315,8 +332,12 @@ def retrieve(
 
     out: List[Dict[str, Any]] = []
     for i in range(len(ids)):
-        dist = float(dists[i]) if i < len(dists) and dists[i] is not None else None # Best distance cosine is near to 0
-        sim = (1.0 - dist) if dist is not None else None # Transform it to a realistic value (ex: distance = 0, convert it to 1)
+        dist = (
+            float(dists[i]) if i < len(dists) and dists[i] is not None else None
+        )  # Best distance cosine is near to 0
+        sim = (
+            (1.0 - dist) if dist is not None else None
+        )  # Transform it to a realistic value (ex: distance = 0, convert it to 1)
         out.append(
             {
                 "id": ids[i],
@@ -401,5 +422,7 @@ def delete(business_id: str) -> bool:
         collection.delete(where={"business_id": business_id})
         return True
     except Exception as e:
-        print('[vectodb] Deletion failed for business_id %s', business_id, e)
+        print("[vectodb] Deletion failed for business_id %s", business_id, e)
         return False
+
+

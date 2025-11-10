@@ -19,21 +19,40 @@ except Exception:
 router = APIRouter()
 gw = GatewayClient()
 
+
 class ChatRequest(BaseModel):
     query: str = Field(..., description="User chat message/question")
     business_id: str = Field(..., description="Business identifier to filter context")
-    context_limit: int = Field(5, ge=1, le=20, description="Number of context chunks to retrieve")
+    context_limit: int = Field(
+        5, ge=1, le=20, description="Number of context chunks to retrieve"
+    )
     temperature: float = Field(0.7, ge=0.0, le=2.0, description="LLM temperature")
-    min_confidence: float = Field(0.4, ge=0.0, le=1.0, description="Confidence threshold for intent gating")
+    min_confidence: float = Field(
+        0.4, ge=0.0, le=1.0, description="Confidence threshold for intent gating"
+    )
     chat_id: Optional[str] = Field(default=None, description="Optional chat identifier")
-    lead_id:Optional[str]=Field(default=None,description="lead identifier")
-    timestamp: Optional[str] = Field(default=None, description="Optional ISO timestamp of the message")
-    messages_in_session: Optional[int] = Field(default=1, ge=1, description="Messages in current session")
-    conversation_duration_minutes: Optional[float] = Field(default=1.0, ge=0.0, description="Duration in minutes")
-    user_response_time_avg_seconds: Optional[float] = Field(default=60.0, ge=0.0, description="Avg response time")
-    user_initiated_conversation: Optional[bool] = Field(default=False, description="Did user start chat?")
-    is_returning_customer: Optional[bool] = Field(default=False, description="Is user returning?")
-    time_of_day: Optional[str] = Field(default="business_hours", description="business_hours/off_hours")
+    lead_id: Optional[str] = Field(default=None, description="lead identifier")
+    timestamp: Optional[str] = Field(
+        default=None, description="Optional ISO timestamp of the message"
+    )
+    messages_in_session: Optional[int] = Field(
+        default=1, ge=1, description="Messages in current session"
+    )
+    conversation_duration_minutes: Optional[float] = Field(
+        default=1.0, ge=0.0, description="Duration in minutes"
+    )
+    user_response_time_avg_seconds: Optional[float] = Field(
+        default=60.0, ge=0.0, description="Avg response time"
+    )
+    user_initiated_conversation: Optional[bool] = Field(
+        default=False, description="Did user start chat?"
+    )
+    is_returning_customer: Optional[bool] = Field(
+        default=False, description="Is user returning?"
+    )
+    time_of_day: Optional[str] = Field(
+        default="business_hours", description="business_hours/off_hours"
+    )
 
 
 # --- Optional local LLM via llama.cpp (GGUF) ----------------------------------------------------
@@ -64,10 +83,15 @@ def _get_llm_engine() -> Tuple[Optional[object], str]:
     override_path = os.environ.get("LLM_MODEL_PATH")  # bypass HF download if set
     api_logger.info(
         "chat.llm: init with repo=%s file=%s cache_dir=%s override=%s",
-        repo, fn, cache_dir, bool(override_path),
+        repo,
+        fn,
+        cache_dir,
+        bool(override_path),
     )
     if not repo or not fn:
-        api_logger.warning("chat.llm: env not configured (LLM_GGUF_REPO/LLM_GGUF_FILENAME)")
+        api_logger.warning(
+            "chat.llm: env not configured (LLM_GGUF_REPO/LLM_GGUF_FILENAME)"
+        )
         return None, "llm_not_configured"
 
     try:
@@ -75,20 +99,22 @@ def _get_llm_engine() -> Tuple[Optional[object], str]:
             model_path = override_path
             api_logger.info("chat.llm: using override model path: %s", model_path)
         else:
-            model_path = hf_hub_download(
-                repo_id=repo, filename=fn, local_dir=cache_dir
-            )
+            model_path = hf_hub_download(repo_id=repo, filename=fn, local_dir=cache_dir)
             api_logger.info("chat.llm: downloaded/cached model at: %s", model_path)
 
         try:
             size = os.path.getsize(model_path)
         except Exception:
             size = -1
-        api_logger.info("chat.llm: model file exists=%s size=%s", os.path.isfile(model_path), size)
+        api_logger.info(
+            "chat.llm: model file exists=%s size=%s", os.path.isfile(model_path), size
+        )
 
         n_ctx = int(os.environ.get("LLM_N_CTX", "4096"))
         n_gpu_layers = int(os.environ.get("LLM_N_GPU_LAYERS", "0"))
-        api_logger.info("chat.llm: creating engine n_ctx=%d n_gpu_layers=%d", n_ctx, n_gpu_layers)
+        api_logger.info(
+            "chat.llm: creating engine n_ctx=%d n_gpu_layers=%d", n_ctx, n_gpu_layers
+        )
         engine = Llama(model_path=model_path, n_ctx=n_ctx, n_gpu_layers=n_gpu_layers)
         _llm_engine = engine
         api_logger.info("chat.llm: engine initialized successfully")
@@ -120,13 +146,10 @@ def _format_context(snippets: List[Dict[str, Any]], limit: int) -> str:
 
 
 def _build_enhanced_prompt(
-    intent: str,
-    lead_category: str,
-    userQuery: str,
-    context_text: str
+    intent: str, lead_category: str, userQuery: str, context_text: str
 ) -> str:
     """Build an enhanced, adaptive prompt based on intent and lead score."""
-    
+
     # === INTENT-SPECIFIC INSTRUCTIONS ===
     intent_templates = {
         "greeting": "Respond warmly and professionally in 1-2 sentences.",
@@ -136,10 +159,12 @@ def _build_enhanced_prompt(
         "feature_inquiry": "List features from context with citations.",
         "technical_support": "Provide step-by-step from context only.",
     }
-    
+
     # === LEAD-BASED PRIORITY & LENGTH ===
     if lead_category == "hot":
-        priority_instruction = "HIGH-VALUE LEAD: Be helpful and thorough, but cite every claim."
+        priority_instruction = (
+            "HIGH-VALUE LEAD: Be helpful and thorough, but cite every claim."
+        )
         max_tokens_guidance = "Maximum 4 sentences"
     elif lead_category == "warm":
         priority_instruction = "ENGAGED USER: Be informative with clear citations."
@@ -147,8 +172,10 @@ def _build_enhanced_prompt(
     else:
         priority_instruction = "Be concise and cite sources."
         max_tokens_guidance = "Maximum 2 sentences"
-    
-    intent_instruction = intent_templates.get(intent, "Answer factually from context only.")
+
+    intent_instruction = intent_templates.get(
+        intent, "Answer factually from context only."
+    )
 
     # === UNIFIED PROMPT WITH STRONGER CONSTRAINTS ===
     prompt = (
@@ -157,18 +184,13 @@ def _build_enhanced_prompt(
         "1. Read the CONTEXT section below carefully.\n"
         "2. Answer using ONLY facts from the CONTEXT — after each fact add [#N].\n"
         "3. If the CONTEXT is empty or the answer cannot be found in it, respond exactly:\n"
-        "   \"I don’t have that information. Let me connect you with our sales team.\"\n"
+        '   "I don’t have that information. Let me connect you with our sales team."\n'
         "   (No extra words. No citations.)\n"
         "4. Do NOT include any information from your training or external knowledge.\n"
         f"5. LENGTH: maximum {max_tokens_guidance} tokens.\n"
         f"6. Intent: {intent} — {intent_instruction}\n\n"
         "=== CONTEXT (ONLY SOURCE) ===\n"
         f"{context_text.strip()}\n\n"
-        "=== EXAMPLES (format only — DO NOT reuse example content) ===\n"
-        "Q: Where is the company located?\n"
-        "A: San Francisco, CA [#1]\n\n"
-        "Q: What are shipping times?\n"
-        "A: I don’t have that information. Let me connect you with our sales team.\n\n"
         f"USER QUESTION: {userQuery}\n"
         "YOUR ANSWER:"
     )
@@ -217,8 +239,10 @@ class FeedRequest(BaseModel):
         description="Optional metadata applied to every record submitted",
     )
 
+
 class FeedDeleteRequest(BaseModel):
     business_id: str = Field(description="Business identifier to attach to the record")
+
 
 class FeedDeleteResponse(BaseModel):
     ok: bool
@@ -242,17 +266,17 @@ class VectorRecord(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     embedding: Optional[List[float]] = None
 
+
 class ChatAnswerResponse(BaseModel):
     answer: str = ""
     model: Optional[str] = None
     confidence: Optional[float] = None
-    
 
 
 @router.post("/chat/answer", response_model=ChatAnswerResponse)
 async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
     """
-    Predict intent, retrieve context, generate answer, 
+    Predict intent, retrieve context, generate answer,
     AND compute lead score (cold/warm/hot).
     """
     userQuery = request.query
@@ -263,16 +287,20 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
         pred = await intent_predictor.predict(userQuery)
         intent = pred.get("intent", "unknown")
         intent_conf = float(pred.get("confidence", 0.0))
-        
+
         api_logger.info(
             "chat.intent: predicted intent=%s conf=%.3f chat_id=%s",
-            intent, intent_conf, request.chat_id,
+            intent,
+            intent_conf,
+            request.chat_id,
         )
 
         low_conf = intent_conf < request.min_confidence
 
         # === 2. RETRIEVAL ===
-        api_logger.info("chat.retrieve: querying vectordb top_k=%d", request.context_limit)
+        api_logger.info(
+            "chat.retrieve: querying vectordb top_k=%d", request.context_limit
+        )
 
         relevantData = retrieve(
             userQuery,
@@ -298,22 +326,27 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
             score_features = {
                 "messages_in_session": request.messages_in_session or 1,
                 "user_msg": userQuery,
-                "conversation_duration_minutes": request.conversation_duration_minutes or 1.0,
-                "user_response_time_avg_seconds": request.user_response_time_avg_seconds or 60.0,
-                "user_initiated_conversation": request.user_initiated_conversation or False,
+                "conversation_duration_minutes": request.conversation_duration_minutes
+                or 1.0,
+                "user_response_time_avg_seconds": request.user_response_time_avg_seconds
+                or 60.0,
+                "user_initiated_conversation": request.user_initiated_conversation
+                or False,
                 "is_returning_customer": request.is_returning_customer or False,
-                "time_of_day": request.time_of_day or "business_hours"
+                "time_of_day": request.time_of_day or "business_hours",
             }
 
             # Predict score
             score_predictor = ScorePredictor(model_type="xgboost")
             score_result = await score_predictor.predict(score_features)
-            
+
             api_logger.info(
                 "chat.score: category=%s score=%.3f chat_id=%s",
-                score_result.get("category"), score_result.get("score"), request.chat_id
+                score_result.get("category"),
+                score_result.get("score"),
+                request.chat_id,
             )
-             # ✅ Fire the webhook to NestJS
+            # ✅ Fire the webhook to NestJS
             lead_id = request.lead_id
             lead_category = score_result.get("category", "cold")
             asyncio.create_task(gw.update_lead_score(lead_id, lead_category))
@@ -335,19 +368,24 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
                 intent=intent,
                 lead_category=lead_category,
                 userQuery=userQuery,
-                context_text=context_text
+                context_text=context_text,
             )
-            
+
             api_logger.info(
                 "chat.llm: using enhanced prompt for intent=%s lead=%s, prompt=%s",
-                intent, lead_category, prompt
+                intent,
+                lead_category,
+                prompt,
             )
-            
+
             try:
                 if hasattr(engine, "create_chat_completion"):
                     comp = engine.create_chat_completion(
                         messages=[
-                            {"role": "system", "content": "You are an expert support assistant."},
+                            {
+                                "role": "system",
+                                "content": "You are an expert support assistant.",
+                            },
                             {"role": "user", "content": prompt},
                         ],
                         temperature=float(request.temperature),
@@ -376,7 +414,6 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
                     metadata={
                         "low_confidence": low_conf,
                         "retrieved_count": len(relevantData),
-
                     },
                 )
             )
@@ -385,7 +422,11 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
             api_logger.exception("chat.gateway: failed: %s", e)
 
         # === 6. RESPONSE ===
-        model_name = os.environ.get("LLM_GGUF_FILENAME") or os.environ.get("LLM_GGUF_REPO") or "local-llm"
+        model_name = (
+            os.environ.get("LLM_GGUF_FILENAME")
+            or os.environ.get("LLM_GGUF_REPO")
+            or "local-llm"
+        )
 
         return ChatAnswerResponse(
             answer=answer,
@@ -446,7 +487,10 @@ async def get_vector_records(include_embeddings: bool = False) -> List[VectorRec
         return [VectorRecord(**record) for record in records]
     except Exception as e:
         api_logger.exception("vector_records: failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Vector records retrieval failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Vector records retrieval failed: {e}"
+        )
+
 
 @router.delete("/feed_vector", response_model=FeedDeleteResponse)
 async def feed_vector(request: FeedDeleteRequest) -> FeedDeleteResponse:
@@ -455,9 +499,16 @@ async def feed_vector(request: FeedDeleteRequest) -> FeedDeleteResponse:
     Returns ok.
     """
     try:
-        api_logger.info("deleting biz records from vectorDB for the biz_id %s", request.business_id)
+        api_logger.info(
+            "deleting biz records from vectorDB for the biz_id %s", request.business_id
+        )
         isDeleted = delete(request.business_id)
         return FeedDeleteResponse(ok=isDeleted)
     except Exception as e:
         api_logger.exception("deleting biz records from vectorDB: failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"VectorDB record deletion failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"VectorDB record deletion failed: {e}"
+        )
+
+
+

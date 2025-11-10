@@ -98,10 +98,12 @@ def grid_search_c_ngram(
     c_values = c_values or [0.1, 1.0, 10.0]
     ngram_ranges = ngram_ranges or [(1, 1), (1, 2)]
 
-    pipeline = Pipeline([
-        ("tfidf", TfidfVectorizer(stop_words=stop_words)),
-        ("clf", SVC(probability=True, kernel="linear"))
-    ])
+    pipeline = Pipeline(
+        [
+            ("tfidf", TfidfVectorizer(stop_words=stop_words)),
+            ("clf", SVC(probability=True, kernel="linear")),
+        ]
+    )
 
     param_grid = {
         "tfidf__ngram_range": ngram_ranges,
@@ -122,7 +124,9 @@ def grid_search_c_ngram(
     )
     grid.fit(X, y)
 
-    ml_logger.info(f"Best params: {grid.best_params_}; best score: {grid.best_score_:.4f}")
+    ml_logger.info(
+        f"Best params: {grid.best_params_}; best score: {grid.best_score_:.4f}"
+    )
     return grid.best_estimator_, grid.best_params_, grid.cv_results_
 
 
@@ -149,6 +153,7 @@ def dump_metrics_json(
     def _default(o: Any):
         try:
             import numpy as np  # local import to avoid hard dependency at import time
+
             if isinstance(o, (np.floating, np.integer)):
                 return o.item()
             if isinstance(o, np.ndarray):
@@ -185,10 +190,16 @@ def evaluate(
 
     metrics: Dict[str, Any] = {
         "accuracy": float(accuracy_score(y_true, y_pred)),
-        "precision_macro": float(precision_score(y_true, y_pred, average="macro", zero_division=0)),
-        "recall_macro": float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
+        "precision_macro": float(
+            precision_score(y_true, y_pred, average="macro", zero_division=0)
+        ),
+        "recall_macro": float(
+            recall_score(y_true, y_pred, average="macro", zero_division=0)
+        ),
         "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
-        "classification_report": classification_report(y_true, y_pred, output_dict=True, zero_division=0),
+        "classification_report": classification_report(
+            y_true, y_pred, output_dict=True, zero_division=0
+        ),
         "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
     }
 
@@ -233,7 +244,9 @@ def train_and_save_intent(
             df = df.rename(columns={"instruction": "text"})
             text_col = "text"
         else:
-            raise ValueError("Could not infer text column. Expected 'text' or 'instruction'.")
+            raise ValueError(
+                "Could not infer text column. Expected 'text' or 'instruction'."
+            )
 
     # Validate label column
     if label_col not in df.columns:
@@ -247,6 +260,7 @@ def train_and_save_intent(
 
     # Fit label encoder on all labels for consistent class index mapping
     from sklearn.preprocessing import LabelEncoder
+
     label_encoder = LabelEncoder()
     label_encoder.fit(df[label_col].astype(str).tolist())
     y_train = label_encoder.transform(train_df[label_col].astype(str).tolist())
@@ -263,7 +277,9 @@ def train_and_save_intent(
     )
 
     # 4) Evaluate
-    metrics, metrics_path = evaluate(best_pipeline, X_val, y_val, output_path=metrics_output_path)
+    metrics, metrics_path = evaluate(
+        best_pipeline, X_val, y_val, output_path=metrics_output_path
+    )
 
     # 5) Save model to registry (MinIO/S3) if enabled
     metadata: Dict[str, Any] = {
@@ -306,7 +322,9 @@ def train_and_save_intent(
     }
     if model_key:
         ml_logger.info(
-            "Training complete: model saved to %s; metrics at %s", model_key, metrics_path
+            "Training complete: model saved to %s; metrics at %s",
+            model_key,
+            metrics_path,
         )
     else:
         ml_logger.info(
