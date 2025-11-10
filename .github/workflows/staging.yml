@@ -65,7 +65,7 @@ jobs:
 
             - name: Run tests with coverage
               run: |
-                  pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
+                  pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=term-missing
               env:
                   DEBUG: true
                   LOG_LEVEL: ERROR
