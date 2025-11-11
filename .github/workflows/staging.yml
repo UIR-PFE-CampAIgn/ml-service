@@ -2,7 +2,7 @@ name: "Staging : ML Service"
 
 on:
     push:
-        branches: [feature/devops]
+        branches: [master]
 
 env:
     REGISTRY: ghcr.io
