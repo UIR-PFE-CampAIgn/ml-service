@@ -9,7 +9,6 @@ import pytest
 from app.ml.score import ScorePredictor
 
 
-
 @pytest.fixture
 def qualified_features():
     return {
