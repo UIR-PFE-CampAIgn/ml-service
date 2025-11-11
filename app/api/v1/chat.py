@@ -309,7 +309,11 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
     try:
         # === 1. INTENT PREDICTION ===
         intent_predictor = IntentPredictor()
-        pred = await intent_predictor.predict(userQuery)
+        try:
+            pred = await intent_predictor.predict(userQuery)
+        except ValueError as e:
+            api_logger.warning("chat.intent: %s -- defaulting to unknown", e)
+            pred = {"intent": "unknown", "confidence": 0.0, "top_predictions": []}
         intent = pred.get("intent", "unknown")
         intent_conf = float(pred.get("confidence", 0.0))
 
@@ -333,16 +337,15 @@ async def chat_answer(request: ChatRequest) -> ChatAnswerResponse:
             top_k=max(1, request.context_limit),
         )
         api_logger.info(
-            "chat.retrieve: got %d hits; first_id=%s",
+            "chat.retrieve: got %d hits; ids=%s",
             len(relevantData),
-            (relevantData[0]["id"] if relevantData else None),
+            [hit.get("id") for hit in relevantData],
         )
 
         # Only keep the top-most hit to avoid leaking unrelated business data
-        if len(relevantData) > 1:
-            relevantData = relevantData[:1]
-
         context_text = _format_context(relevantData, len(relevantData))
+        
+        api_logger.info("context_text %s", context_text)
 
         # === 3. LEAD SCORING ===
         score_result = {}

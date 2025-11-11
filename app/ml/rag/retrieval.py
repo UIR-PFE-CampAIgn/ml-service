@@ -1,6 +1,7 @@
+import math
 import os
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from chromadb import PersistentClient
 from huggingface_hub import hf_hub_download
@@ -143,6 +144,24 @@ def _get_collection():
             metadata={"hnsw:space": "cosine"},
         )
     return _collection
+
+
+def _cosine_similarity(vec_a: Sequence[float], vec_b: Sequence[float]) -> float:
+    """Return cosine similarity between two vectors."""
+    if not vec_a or not vec_b:
+        return 0.0
+
+    dot = 0.0
+    norm_a = 0.0
+    norm_b = 0.0
+    for a, b in zip(vec_a, vec_b):
+        dot += a * b
+        norm_a += a * a
+        norm_b += b * b
+
+    if norm_a <= 0 or norm_b <= 0:
+        return 0.0
+    return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
 
 
 def fill(
@@ -295,11 +314,10 @@ def retrieve(
     collection = _get_collection()
 
     qvec = embedder.embed([query])[0]
-    where: Dict[str, Any]
+
     base_filter: Dict[str, Any] = {"business_id": business_id}
-    field_filter: Optional[Any] = None
+    normalized_fields: List[str] = []
     if fields:
-        normalized_fields = []
         seen: set[str] = set()
         for f in fields:
             if isinstance(f, str):
@@ -309,46 +327,45 @@ def retrieve(
                     seen.add(stripped)
         if normalized_fields:
             if len(normalized_fields) == 1:
-                field_filter = {"field": normalized_fields[0]}
+                base_filter["field"] = normalized_fields[0]
             else:
-                field_filter = {"field": {"$in": normalized_fields}}
+                base_filter["field"] = {"$in": normalized_fields}
 
-    if field_filter:
-        where = {"$and": [base_filter, field_filter]}
-    else:
-        where = base_filter
-
-    res = collection.query(
-        query_embeddings=[qvec],
-        n_results=int(max(1, top_k)),
-        include=["documents", "metadatas", "distances", "embeddings"],
-        where=where,
+    # Pull candidate rows strictly scoped to the business before computing similarity.
+    res = collection.get(  # type: ignore
+        where=base_filter,
+        include=["documents", "metadatas", "embeddings"],
     )
+    
+    print("first filter", res)
 
-    ids = res.get("ids", [[]])[0]
-    docs = res.get("documents", [[]])[0]
-    metas = res.get("metadatas", [[]])[0]
-    dists = res.get("distances", [[]])[0]
+    ids = res.get("ids", [])
+    docs = res.get("documents", [])
+    metas = res.get("metadatas", [])
+    embeds = res.get("embeddings", [])
 
-    out: List[Dict[str, Any]] = []
-    for i in range(len(ids)):
-        dist = (
-            float(dists[i]) if i < len(dists) and dists[i] is not None else None
-        )  # Best distance cosine is near to 0
-        sim = (
-            (1.0 - dist) if dist is not None else None
-        )  # Transform it to a realistic value (ex: distance = 0, convert it to 1)
-        out.append(
+    if not ids or not embeds:
+        return []
+
+    scored: List[Dict[str, Any]] = []
+    for idx, doc_id in enumerate(ids):
+        vec = embeds[idx] if idx < len(embeds) else None
+        if not vec:
+            continue
+        sim = _cosine_similarity(qvec, vec)
+        dist = 1.0 - sim
+        scored.append(
             {
-                "id": ids[i],
-                "document": docs[i] if i < len(docs) else None,
-                "metadata": metas[i] if i < len(metas) else None,
+                "id": doc_id,
+                "document": docs[idx] if idx < len(docs) else None,
+                "metadata": metas[idx] if idx < len(metas) else None,
                 "distance": dist,
                 "similarity": sim,
             }
         )
 
-    return out
+    scored.sort(key=lambda row: row["similarity"], reverse=True)
+    return scored[: int(max(1, top_k))]
 
 
 def list_all(*, include_embeddings: bool = False) -> List[Dict[str, Any]]:

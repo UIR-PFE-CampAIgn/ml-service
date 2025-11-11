@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,24 +20,84 @@ from app.core.model_registry import model_registry
 class IntentPredictor:
     """Intent classification using TF-IDF + SVM pipeline."""
 
-    def __init__(self, model_path: Optional[str] = None):
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        model_version: Optional[str] = None,
+    ):
         self.model_path = model_path or settings.intent_model_path
+        self.model_version = model_version or os.environ.get(
+            "INTENT_MODEL_VERSION", "latest"
+        )
         self.pipeline = None
         self.label_encoder = None
         self._load_model()
 
     def _load_model(self):
         """Load the trained model from registry."""
+        version = self.model_version or "latest"
         try:
-            model_data = model_registry.load_model("intent", version="20251022_191553")
+            model_data = model_registry.load_model("intent", version=version)
             if model_data:
                 self.pipeline = model_data.get("pipeline")
                 self.label_encoder = model_data.get("label_encoder")
-                ml_logger.info("Intent model loaded successfully")
+                ml_logger.info("Intent model loaded successfully (version=%s)", version)
+                return
         except Exception as e:
-            ml_logger.warning(f"Could not load intent model: {e}")
+            ml_logger.warning(
+                "Could not load intent model from registry (version=%s): %s",
+                version,
+                e,
+            )
             self.pipeline = None
             self.label_encoder = None
+
+        if self._load_local_artifact():
+            return
+
+        ml_logger.error(
+            "Intent model unavailable. Train a model or set INTENT_MODEL_PATH/INTENT_MODEL_VERSION."
+        )
+
+    def _load_local_artifact(self) -> bool:
+        """Attempt to load a serialized artifact from the local filesystem."""
+        if not self.model_path:
+            return False
+
+        base = Path(self.model_path)
+        candidates: List[Path] = []
+
+        if base.is_file():
+            candidates.append(base)
+        else:
+            candidates.extend(
+                [
+                    base / "model.joblib",
+                    base / "pipeline.joblib",
+                    base / "model.pkl",
+                    base / "pipeline.pkl",
+                ]
+            )
+
+        for path in candidates:
+            if not path.exists():
+                continue
+            try:
+                artifact = joblib.load(str(path))
+                if isinstance(artifact, dict):
+                    self.pipeline = artifact.get("pipeline")
+                    self.label_encoder = artifact.get("label_encoder")
+                else:
+                    self.pipeline = artifact
+                    self.label_encoder = None
+
+                if self.pipeline:
+                    ml_logger.info("Intent model loaded from local path: %s", path)
+                    return True
+            except Exception as e:
+                ml_logger.warning("Failed to load local intent artifact %s: %s", path, e)
+
+        return False
 
     def _preprocess_text(self, text: str) -> str:
         """Preprocess text for intent classification."""
