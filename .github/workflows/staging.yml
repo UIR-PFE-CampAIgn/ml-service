@@ -133,7 +133,7 @@ jobs:
             - name: Deploy ML Service (targeted)
               uses: appleboy/ssh-action@v1.0.3
               with:
-                  host: "34.185.168.197"  # Hardcoded temporarily
+                  host: ${{ secrets.STAGING_HOST }}
                   port: 22 
                   username: ${{ secrets.STAGING_USER }}
                   key: ${{ secrets.STAGING_SSH_KEY }}
@@ -143,4 +143,4 @@ jobs:
                       set -euo pipefail
                       cd /opt/campaign-staging/stack
                       echo "ML_SERVICE_TAG=${{ steps.vars.outputs.sha_short }}" | sudo tee .deploy_tags_ml >/dev/null
-                      ./deploy.sh ml-service
+                      ./deploy.sh ml
