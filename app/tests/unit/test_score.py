@@ -9,6 +9,7 @@ import pytest
 from app.ml.score import ScorePredictor
 
 
+
 @pytest.fixture
 def qualified_features():
     return {
@@ -44,7 +45,8 @@ class TestScoreValidation:
         incomplete = {"messages_in_session": 5, "user_msg": "test"}
 
         with pytest.raises(ValueError, match="Missing required features"):
-            await score_predictor.predict(incomplete)
+            await ScorePredictor
+.predict(incomplete)
 
     @pytest.mark.asyncio
     async def test_invalid_time_of_day(self, qualified_features):
@@ -54,7 +56,8 @@ class TestScoreValidation:
         # Note: Validation happens in API layer, not predictor
         # This test verifies model doesn't crash
         try:
-            await score_predictor.predict(qualified_features)
+            await ScorePredictor
+.predict(qualified_features)
         except:
             pass  # Expected if model not loaded
 
@@ -65,10 +68,12 @@ class TestScorePrediction:
     @pytest.mark.asyncio
     async def test_predict_returns_correct_format(self, qualified_features):
         """Should return score, category, confidence."""
-        if not score_predictor.pipeline:
+        if not ScorePredictor
+.pipeline:
             pytest.skip("Model not loaded")
 
-        result = await score_predictor.predict(qualified_features)
+        result = await ScorePredictor
+.predict(qualified_features)
 
         assert "score" in result
         assert "category" in result
@@ -80,14 +85,16 @@ class TestScorePrediction:
     @pytest.mark.asyncio
     async def test_prediction_latency(self, qualified_features):
         """Should predict in under 50ms."""
-        if not score_predictor.pipeline:
+        if not ScorePredictor
+.pipeline:
             pytest.skip("Model not loaded")
 
         import time
 
         start = time.time()
 
-        await score_predictor.predict(qualified_features)
+        await ScorePredictor
+.predict(qualified_features)
 
         latency_ms = (time.time() - start) * 1000
         assert latency_ms < 50, f"Latency {latency_ms:.2f}ms > 50ms"
@@ -99,20 +106,24 @@ class TestScoreCategories:
     @pytest.mark.asyncio
     async def test_high_score_is_hot(self, qualified_features):
         """High score should be categorized as hot."""
-        if not score_predictor.pipeline:
+        if not ScorePredictor
+.pipeline:
             pytest.skip("Model not loaded")
 
-        result = await score_predictor.predict(qualified_features)
+        result = await ScorePredictor
+.predict(qualified_features)
         # Qualified leads should typically be warm or hot
         assert result["category"] in ["warm", "hot"]
 
     @pytest.mark.asyncio
     async def test_low_score_is_cold(self, unqualified_features):
         """Low score should be categorized as cold."""
-        if not score_predictor.pipeline:
+        if not ScorePredictor
+.pipeline:
             pytest.skip("Model not loaded")
 
-        result = await score_predictor.predict(unqualified_features)
+        result = await ScorePredictor
+.predict(unqualified_features)
         # Unqualified leads should typically be cold or warm
         assert result["category"] in ["cold", "warm"]
 
