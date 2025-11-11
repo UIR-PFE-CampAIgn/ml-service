@@ -1,15 +1,15 @@
 import logging
 import logging.config
 import sys
-from typing import Dict, Any
 from pathlib import Path
+from typing import Any, Dict
 
 from app.core.config import settings
 
 
 def setup_logging() -> None:
     """Set up application logging configuration."""
-    
+
     logging_config: Dict[str, Any] = {
         "version": 1,
         "disable_existing_loggers": False,
@@ -109,14 +109,14 @@ def setup_logging() -> None:
             "handlers": ["console", "file", "error_file"],
         },
     }
-    
+
     # Create logs directory if it doesn't exist
     logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)
-    
+
     # Apply logging configuration
     logging.config.dictConfig(logging_config)
-    
+
     # Set up request ID context (useful for tracing)
     logger = logging.getLogger("app")
     logger.info(f"Logging configured with level: {settings.log_level}")
@@ -124,11 +124,11 @@ def setup_logging() -> None:
 
 class RequestContextFilter(logging.Filter):
     """Filter to add request context to log records."""
-    
+
     def filter(self, record):
         # Add request ID if available (would be set by middleware)
-        if not hasattr(record, 'request_id'):
-            record.request_id = 'N/A'
+        if not hasattr(record, "request_id"):
+            record.request_id = "N/A"
         return True
 
 

@@ -1,10 +1,13 @@
 """
 Score webhook for sending lead scores to external endpoints.
 """
-import os
+
 import asyncio
+import os
+from typing import Any, Dict
+
 import httpx
-from typing import Dict, Any
+
 from app.core.logging import ml_logger
 
 
@@ -41,7 +44,9 @@ class ScoreWebhook:
                 return result
 
         except httpx.TimeoutException:
-            error_msg = f"Timeout sending lead score for {lead_id} to {self.webhook_url}"
+            error_msg = (
+                f"Timeout sending lead score for {lead_id} to {self.webhook_url}"
+            )
             ml_logger.error(error_msg)
             return {
                 "success": False,

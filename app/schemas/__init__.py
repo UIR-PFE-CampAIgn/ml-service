@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 # Intent Prediction Schemas
@@ -21,8 +22,12 @@ class IntentPredictionResponse(BaseModel):
 
 # Score Prediction Schemas
 class ScorePredictionRequest(BaseModel):
-    features: Dict[str, Any] = Field(..., description="Feature dictionary for score prediction")
-    model_type: str = Field(default="logistic_regression", description="Model type to use")
+    features: Dict[str, Any] = Field(
+        ..., description="Feature dictionary for score prediction"
+    )
+    model_type: str = Field(
+        default="logistic_regression", description="Model type to use"
+    )
 
 
 class ScorePredictionResponse(BaseModel):
@@ -44,8 +49,12 @@ class ModelType(str, Enum):
 class TrainingRequest(BaseModel):
     model_type: ModelType
     training_data_path: str = Field(..., description="Path to training data file")
-    hyperparameters: Optional[Dict[str, Any]] = Field(default=None, description="Model hyperparameters")
-    validation_split: float = Field(default=0.2, ge=0.1, le=0.5, description="Validation split ratio")
+    hyperparameters: Optional[Dict[str, Any]] = Field(
+        default=None, description="Model hyperparameters"
+    )
+    validation_split: float = Field(
+        default=0.2, ge=0.1, le=0.5, description="Validation split ratio"
+    )
 
 
 class TrainingResponse(BaseModel):
@@ -79,7 +88,9 @@ class ErrorResponse(BaseModel):
 
 # Batch Prediction Schemas
 class BatchIntentRequest(BaseModel):
-    texts: List[str] = Field(..., min_items=1, description="List of texts for batch intent prediction")
+    texts: List[str] = Field(
+        ..., min_items=1, description="List of texts for batch intent prediction"
+    )
 
 
 class BatchIntentResponse(BaseModel):
@@ -87,8 +98,12 @@ class BatchIntentResponse(BaseModel):
 
 
 class BatchScoreRequest(BaseModel):
-    features_list: List[Dict[str, Any]] = Field(..., min_items=1, description="List of feature dictionaries")
-    model_type: str = Field(default="logistic_regression", description="Model type to use")
+    features_list: List[Dict[str, Any]] = Field(
+        ..., min_items=1, description="List of feature dictionaries"
+    )
+    model_type: str = Field(
+        default="logistic_regression", description="Model type to use"
+    )
 
 
 class BatchScoreResponse(BaseModel):

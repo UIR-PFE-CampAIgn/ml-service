@@ -1,24 +1,24 @@
-from pathlib import Path
-from typing import Optional, Tuple, List, Any, Dict
 import json
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import pandas as pd
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
+    confusion_matrix,
+    f1_score,
     precision_score,
     recall_score,
-    f1_score,
-    confusion_matrix,
 )
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 
 from app.core.logging import ml_logger
 from app.core.model_registry import model_registry
-
 
 DEFAULT_DATASET_PATH = "C:\\Users\\rmeri\\ml-service\\data\\whatsapp_leads.csv"
 
@@ -50,12 +50,15 @@ def split_80_20(df: pd.DataFrame, *, label_col: str = "score", random_state: int
 # -----------------------------------------------------------------------------
 # Utility: Dump metrics JSON
 # -----------------------------------------------------------------------------
-def dump_metrics_json(metrics: Dict[str, Any], output_path: Optional[str] = None) -> str:
+def dump_metrics_json(
+    metrics: Dict[str, Any], output_path: Optional[str] = None
+) -> str:
     out = Path(output_path or "models/lead_score/metrics.json")
     out.parent.mkdir(parents=True, exist_ok=True)
 
     def _default(o: Any):
         import numpy as np
+
         if isinstance(o, (np.floating, np.integer)):
             return o.item()
         if isinstance(o, np.ndarray):
@@ -78,10 +81,16 @@ def evaluate(pipeline: Pipeline, X, y_true, *, output_path: Optional[str] = None
     y_pred = pipeline.predict(X)
     metrics = {
         "accuracy": float(accuracy_score(y_true, y_pred)),
-        "precision_macro": float(precision_score(y_true, y_pred, average="macro", zero_division=0)),
-        "recall_macro": float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
+        "precision_macro": float(
+            precision_score(y_true, y_pred, average="macro", zero_division=0)
+        ),
+        "recall_macro": float(
+            recall_score(y_true, y_pred, average="macro", zero_division=0)
+        ),
         "f1_score": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
-        "classification_report": classification_report(y_true, y_pred, output_dict=True, zero_division=0),
+        "classification_report": classification_report(
+            y_true, y_pred, output_dict=True, zero_division=0
+        ),
         "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
     }
     out_path = dump_metrics_json(metrics, output_path)
@@ -114,7 +123,7 @@ def train_and_save_lead_score(
 
     # 2️⃣ Feature columns
     numeric_features = [
-        "messages_in_session",                  
+        "messages_in_session",
         "conversation_duration_minutes",
         "user_response_time_avg_seconds",
     ]
@@ -154,9 +163,9 @@ def train_and_save_lead_score(
     from xgboost import XGBClassifier
 
     model = XGBClassifier(
-        objective="multi:softprob",   # MULTI-CLASS
+        objective="multi:softprob",  # MULTI-CLASS
         num_class=3,
-        eval_metric="mlogloss",       # Use multi-class log loss
+        eval_metric="mlogloss",  # Use multi-class log loss
         use_label_encoder=False,
         n_estimators=200,
         learning_rate=0.1,
@@ -174,10 +183,12 @@ def train_and_save_lead_score(
     }
 
     # 7️⃣ Build pipeline
-    pipeline = Pipeline([
-        ("features", preprocessor),
-        ("clf", model),
-    ])
+    pipeline = Pipeline(
+        [
+            ("features", preprocessor),
+            ("clf", model),
+        ]
+    )
 
     # 8️⃣ Grid search
     grid = GridSearchCV(
@@ -196,7 +207,9 @@ def train_and_save_lead_score(
     ml_logger.info(f"Best params: {best_params}")
 
     # 9️⃣ Evaluate
-    metrics, metrics_path = evaluate(best_pipeline, X_val, y_val, output_path=metrics_output_path)
+    metrics, metrics_path = evaluate(
+        best_pipeline, X_val, y_val, output_path=metrics_output_path
+    )
 
     # 🔟 Save metadata + model
     metadata = {

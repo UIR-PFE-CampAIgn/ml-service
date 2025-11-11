@@ -15,6 +15,15 @@ RUN apt-get update && apt-get install -y \
     g++ \
     cmake \
     curl \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libwebp-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libopenjp2-7-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first (for better caching)
