@@ -73,6 +73,7 @@ jobs:
 
             - name: Run tests with coverage
               run: |
+                  export PYTHONPATH=$PYTHONPATH:$(pwd)
                   pytest app/tests/unit/ -v --cov=app --cov-report=xml --cov-report=term-missing
               env:
                   DEBUG: true
