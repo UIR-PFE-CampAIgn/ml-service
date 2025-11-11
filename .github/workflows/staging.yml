@@ -133,7 +133,7 @@ jobs:
             - name: Deploy ML Service (targeted)
               uses: appleboy/ssh-action@v1.0.3
               with:
-                  host: ${{ secrets.STAGING_HOST }}
+                  host: "34.185.168.197"  # Hardcoded temporarily
                   port: 22 
                   username: ${{ secrets.STAGING_USER }}
                   key: ${{ secrets.STAGING_SSH_KEY }}
