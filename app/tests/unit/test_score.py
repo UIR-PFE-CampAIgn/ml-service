@@ -6,7 +6,7 @@ Add to tests/unit/
 
 import pytest
 
-from app.ml.score import score_predictor
+from app.ml.score import ScorePredictor
 
 
 @pytest.fixture
