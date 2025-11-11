@@ -58,6 +58,14 @@ jobs:
                   black --check app/
                   isort --check-only --profile black app/
                   flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+            - name: Verify tests folder exists
+              run: |
+                  echo "Current directory:"
+                  pwd
+                  echo "Listing files:"
+                  ls -R
+
+
 
             - name: Create test directories
               run: |
