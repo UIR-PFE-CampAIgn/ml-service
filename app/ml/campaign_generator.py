@@ -11,9 +11,6 @@ from app.schemas import (
 )
 
 
-
-
-
 class WhatsAppCampaignGenerator:
     """WhatsApp Campaign Generator using Groq API (sync version, no aiohttp)"""
 
@@ -51,6 +48,16 @@ LEAD SEGMENTS:
 - WARM: Considering, need nurturing
 - COLD: Awareness stage
 
+MESSAGE TEMPLATE TYPES:
+- promotional: Product/service promotion with offers
+- informational: Educational content, updates, news
+- transactional: Order confirmations, receipts, status updates
+- engagement: Interactive content, surveys, feedback requests
+- nurturing: Relationship building, follow-ups
+- reminder: Appointment reminders, deadline alerts
+- welcome: Onboarding, introductions
+- re-engagement: Win-back campaigns for inactive leads
+
 Return ONLY valid JSON (no markdown):
 {{
   "strategy": {{
@@ -64,6 +71,7 @@ Return ONLY valid JSON (no markdown):
     {{
       "message": "Hi {{{{name}}}}! 🎯 Check this out...",
       "target_segment": "hot",
+      "template_type": "promotional",
       "approach": "direct",
       "personalization_tips": "Mention previous interest"
     }}
@@ -114,6 +122,7 @@ Return ONLY valid JSON (no markdown):
             content = content.split("```")[1].split("```")[0]
 
         return json.loads(content)
+    
     def generate_campaign(self, request: CampaignRequest) -> CampaignResponse:
         """Main entry to generate campaign"""
         try:
@@ -122,7 +131,6 @@ Return ONLY valid JSON (no markdown):
         except Exception as e:
             self._log("error", f"Groq failed: {e}")
             raise  # <-- Stop here instead of using fallback
-
 
         strategy = CampaignStrategy(**campaign_data["strategy"])
         templates = [MessageTemplate(**t) for t in campaign_data["templates"]]
@@ -146,4 +154,4 @@ def generate_campaign(prompt: str, groq_api_key: str, timezone: str = "UTC") -> 
         "templates": [t.dict() for t in response.templates],
         "schedule": [s.dict() for s in response.schedule],
         "insights": response.insights
-    } 
+    }

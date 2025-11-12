@@ -58,9 +58,9 @@ async def generate_campaign(request: GenerateCampaignRequest) -> Dict[str, Any]:
         )
         
         # Generate campaign
-        campaign =  generator.generate_campaign(campaign_request)
+        campaign = generator.generate_campaign(campaign_request)
         
-        # Return as dict
+        # Return as dict - INCLUDING template_type
         return {
             "strategy": {
                 "target_segments": campaign.strategy.target_segments,
@@ -73,6 +73,7 @@ async def generate_campaign(request: GenerateCampaignRequest) -> Dict[str, Any]:
                 {
                     "message": t.message,
                     "target_segment": t.target_segment,
+                    "template_type": t.template_type,  
                     "approach": t.approach,
                     "personalization_tips": t.personalization_tips
                 }

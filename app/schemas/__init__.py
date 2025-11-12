@@ -49,6 +49,7 @@ class CampaignRequest(BaseModel):
 class MessageTemplate(BaseModel):
     message: str
     target_segment: str
+    template_type: str 
     approach: str
     personalization_tips: str
 
