@@ -1,42 +1,17 @@
-from typing import Any, Dict, List
-from datetime import datetime, timedelta
+from typing import Any, Dict
+from datetime import datetime
 import json
 import requests
-from pydantic import BaseModel, Field
+from app.schemas import (
+    CampaignRequest,
+    CampaignResponse,
+    CampaignStrategy,
+    MessageTemplate,
+    SendSchedule,
+)
 
 
-class CampaignRequest(BaseModel):
-    prompt: str
-    timezone: str = "UTC"
 
-
-class MessageTemplate(BaseModel):
-    message: str
-    target_segment: str
-    approach: str
-    personalization_tips: str
-
-
-class SendSchedule(BaseModel):
-    segment: str
-    send_datetime: str
-    reasoning: str
-    priority: str
-
-
-class CampaignStrategy(BaseModel):
-    target_segments: List[str]
-    reasoning: str
-    campaign_type: str
-    key_message: str
-    expected_response_rates: Dict[str, str]
-
-
-class CampaignResponse(BaseModel):
-    strategy: CampaignStrategy
-    templates: List[MessageTemplate]
-    schedule: List[SendSchedule]
-    insights: Dict[str, List[str]]
 
 
 class WhatsAppCampaignGenerator:

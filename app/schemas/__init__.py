@@ -39,7 +39,40 @@ class ScorePredictionResponse(BaseModel):
 
 ## RAG Schemas removed
 
+##campagin generator shemas
 
+class CampaignRequest(BaseModel):
+    prompt: str
+    timezone: str = "UTC"
+
+
+class MessageTemplate(BaseModel):
+    message: str
+    target_segment: str
+    approach: str
+    personalization_tips: str
+
+
+class SendSchedule(BaseModel):
+    segment: str
+    send_datetime: str
+    reasoning: str
+    priority: str
+
+
+class CampaignStrategy(BaseModel):
+    target_segments: List[str]
+    reasoning: str
+    campaign_type: str
+    key_message: str
+    expected_response_rates: Dict[str, str]
+
+
+class CampaignResponse(BaseModel):
+    strategy: CampaignStrategy
+    templates: List[MessageTemplate]
+    schedule: List[SendSchedule]
+    insights: Dict[str, List[str]]
 # Training Schemas
 class ModelType(str, Enum):
     INTENT = "intent"
