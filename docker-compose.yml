@@ -7,6 +7,8 @@ services:
     user: "0:0" # quick fix: ensure write access to mounted volumes
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - DEBUG=true
       - HOST=0.0.0.0
@@ -36,6 +38,8 @@ services:
       - LLM_N_CTX=4096
       - LLM_N_GPU_LAYERS=0
       - GATEWAY_WEBHOOK_URL=http://host.docker.internal:3000
+      - GROQ_API_KEY=${GROQ_API_KEY}
+
 
     volumes:
       - ./data:/app/data

@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api.v1 import chat, intent, score, train
+from app.api.v1 import campaign, chat, intent, score, train
 from app.core.config import settings
 from app.core.logging import app_logger, setup_logging
 from app.schemas import HealthResponse
@@ -90,6 +90,13 @@ app.include_router(
     train.router,
     prefix="/api/v1",
     tags=["training"],
+    responses={404: {"description": "Not found"}},
+)
+
+app.include_router(
+    campaign.router,
+    prefix="/api/v1",
+    tags=["campaign"],
     responses={404: {"description": "Not found"}},
 )
 
