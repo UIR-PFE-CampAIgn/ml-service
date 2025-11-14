@@ -36,7 +36,6 @@ services:
       - LLM_N_CTX=4096
       - LLM_N_GPU_LAYERS=0
       - GATEWAY_WEBHOOK_URL=http://host.docker.internal:3000
-      - GROQ_API_KEY=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
 
     volumes:
       - ./data:/app/data
