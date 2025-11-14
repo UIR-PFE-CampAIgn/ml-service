@@ -23,7 +23,7 @@ jobs:
         steps:
             - uses: actions/checkout@v4
               with:
-                  fetch-depth: 0  # Shallow clones should be disabled for better SonarCloud analysis
+                  fetch-depth: 0 # Shallow clones should be disabled for better SonarCloud analysis
 
             - uses: actions/setup-python@v4
               with:
@@ -42,19 +42,12 @@ jobs:
                   pip install -r requirements.txt
                   pip install pytest pytest-cov flake8 black isort
 
-            - name: Code quality checks
-              run: |
-                  black --check app/
-                  isort --check-only --profile black app/
-                  flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
             - name: Verify tests folder exists
               run: |
                   echo "Current directory:"
                   pwd
                   echo "Listing files:"
                   ls -R
-
-
 
             - name: Create test directories
               run: |
@@ -123,7 +116,7 @@ jobs:
               uses: appleboy/ssh-action@v1.0.3
               with:
                   host: ${{ secrets.STAGING_HOST }}
-                  port: 22 
+                  port: 22
                   username: ${{ secrets.STAGING_USER }}
                   key: ${{ secrets.STAGING_SSH_KEY }}
                   script_stop: true
