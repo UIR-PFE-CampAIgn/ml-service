@@ -7,7 +7,7 @@ import numpy as np
 import requests
 from tabulate import tabulate
 
-API_URL = "http://localhost:8000/api/v1/ml/v1/predict_score"
+API_URL = "http://localhost:8082/api/v1/ml/v1/predict_score"
 
 # ========================================================================
 # ENHANCED TEST SUITE: 100+ CASES

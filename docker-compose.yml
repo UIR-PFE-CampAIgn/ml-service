@@ -6,13 +6,11 @@ services:
     build: .
     user: "0:0" # quick fix: ensure write access to mounted volumes
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "8082:8082"
     environment:
       - DEBUG=true
       - HOST=0.0.0.0
-      - PORT=8000
+      - PORT=8082
       - LOG_LEVEL=INFO
       # Storage
       - MODEL_STORAGE_TYPE=minio
@@ -24,7 +22,7 @@ services:
       # Chroma/telemetry
       - ANONYMIZED_TELEMETRY=false
       - CHROMA_SERVER_HOST=vectordb
-      - CHROMA_SERVER_PORT=8000
+      - CHROMA_SERVER_PORT=8082
       - VECTOR_DB_PATH=/app/data/vectordb
       - RAG_COLLECTION=documents
       # Hugging Face cache
@@ -38,8 +36,7 @@ services:
       - LLM_N_CTX=4096
       - LLM_N_GPU_LAYERS=0
       - GATEWAY_WEBHOOK_URL=http://host.docker.internal:3000
-      - GROQ_API_KEY=${GROQ_API_KEY}
-
+      - GROQ_API_KEY=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
 
     volumes:
       - ./data:/app/data
@@ -60,7 +57,7 @@ services:
     environment:
       - ANONYMIZED_TELEMETRY=false
     ports:
-      - "8001:8000"
+      - "8001:8082"
     volumes:
       - vectordb_data:/chroma/data
     networks:

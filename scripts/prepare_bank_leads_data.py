@@ -237,7 +237,7 @@ def prepare_bank_leads_data(input_path: str, output_path: str):
     
     print(f"\n💾 Saved to: {output_path}")
     print(f"\n🚀 Next step: Train model!")
-    print(f"curl -X POST http://localhost:8000/ml/v1/train_score \\")
+    print(f"curl -X POST http://localhost:8082/ml/v1/train_score \\")
     print(f'  -H "Content-Type: application/json" \\')
     print(f'  -d \'{{"data_path": "{output_path}", "grid_search": false}}\'')
 

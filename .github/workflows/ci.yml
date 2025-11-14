@@ -230,7 +230,7 @@ jobs:
 
       - name: Run performance tests
         run: |
-          locust -f tests/performance/locustfile.py --host=http://localhost:8000 \
+          locust -f tests/performance/locustfile.py --host=http://localhost:8082 \
                  --users 10 --spawn-rate 2 --run-time 60s --headless
 
       - name: Stop services

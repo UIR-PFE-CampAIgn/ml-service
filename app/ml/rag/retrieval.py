@@ -27,7 +27,7 @@ HF_CACHE = os.environ.get("HF_HOME", "/app/models")
 VECTOR_DB_PATH = os.environ.get("VECTOR_DB_PATH", "/app/data/vectordb")
 COLLECTION_NAME = os.environ.get("RAG_COLLECTION", "documents")
 CHROMA_SERVER_HOST = os.environ.get("CHROMA_SERVER_HOST")
-CHROMA_SERVER_PORT = int(os.environ.get("CHROMA_SERVER_PORT", "8000"))
+CHROMA_SERVER_PORT = int(os.environ.get("CHROMA_SERVER_PORT", "8082"))
 CHROMA_SERVER_SSL = os.environ.get("CHROMA_SERVER_SSL", "false").lower() in {
     "1",
     "true",

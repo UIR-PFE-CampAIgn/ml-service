@@ -17,8 +17,8 @@ RUN pip install "chromadb[server]==0.4.22" \
 
 RUN mkdir -p /chroma/data
 
-EXPOSE 8000
+EXPOSE 8082
 
 ENV ANONYMIZED_TELEMETRY=false
 
-CMD ["chroma", "run", "--path", "/chroma/data", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["chroma", "run", "--path", "/chroma/data", "--host", "0.0.0.0", "--port", "8082"]

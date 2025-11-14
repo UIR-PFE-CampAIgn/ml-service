@@ -59,12 +59,12 @@ ml-service/
 
    This will start:
 
-   - ML Service (FastAPI) on `http://localhost:8000`
+   - ML Service (FastAPI) on `http://localhost:8082`
    - MinIO (S3-compatible storage) on `http://localhost:9000`
 
 3. **Access the API documentation**
-   - Swagger UI: `http://localhost:8000/docs`
-   - ReDoc: `http://localhost:8000/redoc`
+   - Swagger UI: `http://localhost:8082/docs`
+   - ReDoc: `http://localhost:8082/redoc`
 
 ### Local Development
 
@@ -87,7 +87,7 @@ ml-service/
 
 3. **Run the service**
    ```bash
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8082
    ```
 
 ## API Usage
@@ -96,14 +96,14 @@ ml-service/
 
 ```bash
 # Predict intent for a single text
-curl -X GET "http://localhost:8000/api/v1/predict_intent?text=Hello%20how%20are%20you"
+curl -X GET "http://localhost:8082/api/v1/predict_intent?text=Hello%20how%20are%20you"
 ```
 
 ### Score Prediction
 
 ```bash
 # Predict score using features
-curl -X GET "http://localhost:8000/api/v1/predict_score" \
+curl -X GET "http://localhost:8082/api/v1/predict_score" \
   -H "Content-Type: application/json" \
   -d '{
     "features": {"feature1": 1.0, "feature2": 0.5},
@@ -111,12 +111,11 @@ curl -X GET "http://localhost:8000/api/v1/predict_score" \
   }'
 ```
 
-
 ### Model Training
 
 ```bash
 # Start training a new model
-curl -X POST "http://localhost:8000/api/v1/train" \
+curl -X POST "http://localhost:8082/api/v1/train" \
   -H "Content-Type: application/json" \
   -d '{
     "model_type": "intent",
@@ -126,7 +125,7 @@ curl -X POST "http://localhost:8000/api/v1/train" \
   }'
 
 # Check training status
-curl -X GET "http://localhost:8000/api/v1/train/{job_id}/status"
+curl -X GET "http://localhost:8082/api/v1/train/{job_id}/status"
 ```
 
 ## Configuration
@@ -137,7 +136,7 @@ The service is configured using environment variables and/or a `.env` file:
 # API Settings
 DEBUG=false
 HOST=0.0.0.0
-PORT=8000
+PORT=8082
 
 # Model Storage (S3/MinIO)
 MODEL_STORAGE_TYPE=s3
@@ -182,13 +181,13 @@ feature1,feature2,feature3,score
 ### Listing Models
 
 ```bash
-curl -X GET "http://localhost:8000/api/v1/models"
+curl -X GET "http://localhost:8082/api/v1/models"
 ```
 
 ### Model Information
 
 ```bash
-curl -X GET "http://localhost:8000/api/v1/models/intent?version=latest"
+curl -X GET "http://localhost:8082/api/v1/models/intent?version=latest"
 ```
 
 ## Development
@@ -236,7 +235,7 @@ pre-commit install
 docker build -t ml-service:latest .
 
 # Run container
-docker run -p 8000:8000 ml-service:latest
+docker run -p 8082:8082 ml-service:latest
 ```
 
 ### Kubernetes
@@ -261,7 +260,7 @@ spec:
         - name: ml-service
           image: ml-service:latest
           ports:
-            - containerPort: 8000
+            - containerPort: 8082
           env:
             - name: MODEL_STORAGE_TYPE
               value: "s3"
@@ -274,7 +273,7 @@ spec:
 ### Health Check
 
 ```bash
-curl -X GET "http://localhost:8000/health"
+curl -X GET "http://localhost:8082/health"
 ```
 
 ### Metrics
@@ -298,8 +297,7 @@ The service provides basic health and status information. For production monitor
 ### Scaling
 
 - **Horizontal**: Deploy multiple service instances behind a load balancer
-- **Vertical**: Increase CPU and memory allocations
---
+- ## **Vertical**: Increase CPU and memory allocations
 
 ## Troubleshooting
 
